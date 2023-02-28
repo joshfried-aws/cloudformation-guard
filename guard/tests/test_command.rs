@@ -11,6 +11,7 @@ mod test_command_tests {
     use rstest::rstest;
 
     use crate::assert_output_from_file_eq;
+    use cfn_guard::commands::test::Test2;
     use cfn_guard::commands::{
         ALPHABETICAL, DIRECTORY, LAST_MODIFIED, PREVIOUS_ENGINE, RULES, RULES_AND_TEST_FILE,
         RULES_FILE, TEST, TEST_DATA, VERBOSE,
@@ -277,5 +278,38 @@ mod test_command_tests {
             "resources/test-command/output-dir/test_data_dir_verbose_prev_engine.out",
             writer
         );
+    }
+
+    #[rstest]
+    #[case("json")]
+    #[case("yaml")]
+    fn test_data_file_with_shorthand_reference2(#[case] file_type: &str) -> Result<(), Error> {
+        let mut reader = Reader::new(Stdin(std::io::stdin()));
+        let mut writer = Writer::new(WBVec(vec![]), WBVec(vec![]));
+        let test_file = &format!(
+            "resources/test-command/data-dir/s3_bucket_logging_enabled_tests.{}",
+            file_type
+        );
+        let rule = "resources/validate/rules-dir/s3_bucket_server_side_encryption_enabled.guard";
+
+        let cmd = Test2 {
+            rules_file: Some(String::from(rule)),
+            test_data: Some(String::from(test_file)),
+            directory: None,
+            previous_engine: false,
+            alphabetical: false,
+            last_modified: false,
+            verbose: false,
+        };
+
+        let status_code = cmd.execute(&mut writer, &mut reader)?;
+
+        assert_eq!(StatusCode::SUCCESS, status_code);
+        assert_output_from_file_eq!(
+            "resources/test-command/output-dir/test_data_file_with_shorthand_reference.out",
+            writer
+        );
+
+        Ok(())
     }
 }

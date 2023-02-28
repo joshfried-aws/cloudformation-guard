@@ -1,4 +1,4 @@
-use clap::{Arg, ArgAction, ArgGroup, ArgMatches};
+use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Args};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
@@ -39,6 +39,276 @@ impl Test {
     }
 }
 
+const TEST_ABOUT: &str = r#"Built in unit testing capability to validate a Guard rules file against
+unit tests specified in YAML format to determine each individual rule's success
+or failure testing.
+"#;
+
+const RULES_HELP: &str = "Provide a rules file";
+const TEST_DATA_HELP: &str = "Provide a file or dir for data files in JSON or YAML";
+const DIRECTORY_HELP: &str = "Provide the root directory for rules";
+const PREVIOUS_ENGINE_HELP: &str = "Uses the old engine for evaluation. This parameter will allow customers to evaluate old changes before migrating";
+const ALPHABETICAL_HELP: &str = "Sort alphabetically inside a directory";
+const LAST_MODIFIED_HELP: &str = "Sort by last modified times within a directory";
+const VERBOSE_HELP: &str = "Verbose logging";
+
+#[derive(Args, Debug, Default)]
+#[clap(group(ArgGroup::new(DIRECTORY_ONLY).args(["dir"]).requires_all([DIRECTORY.0]).conflicts_with(RULES_AND_TEST_FILE)))]
+#[clap(group(ArgGroup::new(RULES_AND_TEST_FILE).requires_all([RULES_FILE.0, TEST_DATA.0]).conflicts_with(DIRECTORY_ONLY)))]
+pub struct Test2 {
+    #[arg(long = "rules-file", short, help = RULES_HELP)]
+    pub rules_file: Option<String>,
+    #[arg(long = "test-data", short, help = TEST_DATA_HELP)]
+    pub test_data: Option<String>,
+    #[arg(long = "dir", short, help = DIRECTORY_HELP)]
+    pub directory: Option<String>,
+    #[arg(long = "previous-engine", short = 'E', help = PREVIOUS_ENGINE_HELP)]
+    pub previous_engine: bool,
+    #[arg(long, short, help = ALPHABETICAL_HELP)]
+    pub alphabetical: bool,
+    #[arg(long = "last-modified", short, help = LAST_MODIFIED_HELP, conflicts_with = ALPHABETICAL.0)]
+    pub last_modified: bool,
+    #[arg(long, short, help = VERBOSE_HELP)]
+    pub verbose: bool,
+}
+
+impl Test2 {
+    pub fn execute(&self, writer: &mut Writer, _: &mut Reader) -> Result<i32> {
+        if self.directory.is_some() {
+            let guard_files = self.handle_directory_only()?;
+            return self.evaluate_files_in_directory(guard_files, writer);
+        }
+
+        self.evaluate_rule_and_test_file(writer)
+    }
+
+    fn get_test_files(&self) -> Result<Vec<PathBuf>> {
+        let cmp = if self.alphabetical {
+            alpabetical
+        } else if self.last_modified {
+            last_modified
+        } else {
+            regular_ordering
+        };
+
+        let data = self.test_data.as_ref().map_or("", |s| s);
+        validate_path(data)?;
+
+        get_files_with_filter(data, cmp, |entry| {
+            entry
+                .file_name()
+                .to_str()
+                .map(|name| {
+                    name.ends_with(".json")
+                        || name.ends_with(".yaml")
+                        || name.ends_with(".JSON")
+                        || name.ends_with(".YAML")
+                        || name.ends_with(".yml")
+                        || name.ends_with(".jsn")
+                })
+                .unwrap_or(false)
+        })
+    }
+
+    fn evaluate_rule_and_test_file(&self, writer: &mut Writer) -> Result<i32> {
+        let test_files = self.get_test_files()?;
+        let file = self.rules_file.as_ref().map_or("", |s| s);
+        validate_path(file)?;
+
+        let path = PathBuf::try_from(file)?;
+        let rule_file = File::open(path.clone())?;
+
+        if !rule_file.metadata()?.is_file() {
+            return Err(Error::IoError(std::io::Error::from(
+                std::io::ErrorKind::InvalidInput,
+            )));
+        }
+
+        let mut exit_code = 0;
+        let ruleset = vec![path];
+        for rules in iterate_over(&ruleset, |content, file| {
+            Ok((content, file.to_str().unwrap_or("").to_string()))
+        }) {
+            match rules {
+                Err(e) => {
+                    write!(writer, "Unable to read rule file content {e}")?;
+                    exit_code = 1;
+                }
+                Ok((context, path)) => {
+                    let res = self.evaluate(&context, &path, &test_files, writer)?;
+
+                    if exit_code != 0 {
+                        exit_code = res;
+                    }
+                }
+            }
+        }
+
+        Ok(0)
+    }
+
+    fn evaluate_files_in_directory(
+        &self,
+        files: BTreeMap<String, Vec<GuardFile>>,
+        writer: &mut Writer,
+    ) -> Result<i32> {
+        let mut status = 0;
+        for (_, guard_files) in files {
+            for each_rule_file in guard_files {
+                if each_rule_file.test_files.is_empty() {
+                    writeln!(
+                        writer,
+                        "Guard File {} did not have any tests associated, skipping.",
+                        each_rule_file.file.path().display()
+                    )?;
+                    writeln!(writer, "---")?;
+                    continue;
+                }
+
+                writeln!(
+                    writer,
+                    "Testing Guard File{}",
+                    each_rule_file.file.path().display()
+                )?;
+
+                let rule_file = File::open(each_rule_file.file.path())?;
+                let content = read_file_content(rule_file)?;
+
+                let test_files = each_rule_file
+                    .test_files
+                    .iter()
+                    .map(|de| de.path().to_path_buf())
+                    .collect::<Vec<_>>();
+
+                let result =
+                    self.evaluate(&content, &each_rule_file.prefix, &test_files, writer)?;
+
+                status = if status == 0 { result } else { status };
+                writeln!(writer, "---")?;
+            }
+        }
+
+        Ok(status)
+    }
+
+    fn evaluate(
+        &self,
+        content: &str,
+        path: &str,
+        test_files: &[PathBuf],
+        writer: &mut Writer,
+    ) -> Result<i32> {
+        let span = crate::rules::parser::Span::new_extra(content, path);
+        match crate::rules::parser::rules_file(span) {
+            Err(e) => {
+                writeln!(writer, "Parse Error on ruleset file {e}",)?;
+                Ok(1)
+            }
+
+            Ok(rules) => test_with_data(
+                test_files,
+                &rules,
+                self.verbose,
+                !self.previous_engine,
+                writer,
+            ),
+        }
+    }
+
+    fn handle_directory_only(&self) -> Result<BTreeMap<String, Vec<GuardFile>>> {
+        validate_path(self.directory.as_ref().unwrap())?;
+
+        let Files {
+            mut guard,
+            non_guard,
+        } = self.build_files()?;
+
+        non_guard.into_iter().for_each(|file| {
+            let name = file
+                .file_name()
+                .to_str()
+                .map_or("".to_string(), |s| s.to_string());
+            if name.ends_with(".yaml")
+                || name.ends_with(".yml")
+                || name.ends_with(".json")
+                || name.ends_with(".jsn")
+            {
+                let parent = file.path().parent();
+
+                if parent.map_or(false, |p| p.ends_with("tests")) {
+                    if let Some(candidates) = parent.unwrap().parent().and_then(|grand| {
+                        let grand = format!("{}", grand.display());
+                        guard.get_mut(&grand)
+                    }) {
+                        for guard_file in candidates {
+                            if name.starts_with(&guard_file.prefix) {
+                                guard_file.test_files.push(file);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(guard)
+    }
+
+    fn build_files(&self) -> Result<Files> {
+        walkdir::WalkDir::new(self.directory.as_ref().unwrap())
+            .follow_links(true)
+            .sort_by_file_name()
+            .into_iter()
+            .flatten()
+            .into_iter()
+            .filter(|file| file.path().is_file())
+            .try_fold(Files::default(), |mut files, file| -> Result<Files> {
+                let name = file
+                    .file_name()
+                    .to_str()
+                    .map_or("".to_string(), |s| s.to_string());
+
+                if name.ends_with(".guard") || name.ends_with(".ruleset") {
+                    let prefix = name
+                        .strip_prefix(".guard")
+                        .or_else(|| name.strip_prefix(".ruleset"))
+                        .unwrap()
+                        .to_string();
+
+                    files
+                        .guard
+                        .entry(
+                            file.path()
+                                .parent()
+                                .map_or("".to_string(), |p| format!("{}", p.display())),
+                        )
+                        .or_insert(vec![])
+                        .push(GuardFile {
+                            prefix,
+                            file,
+                            test_files: vec![],
+                        })
+                } else {
+                    files.non_guard.push(file);
+                }
+
+                Ok(files)
+            })
+    }
+}
+
+struct GuardFile {
+    prefix: String,
+    file: DirEntry,
+    test_files: Vec<DirEntry>,
+}
+
+#[derive(Default)]
+struct Files {
+    guard: BTreeMap<String, Vec<GuardFile>>,
+    non_guard: Vec<DirEntry>,
+}
+
 impl Command for Test {
     fn name(&self) -> &'static str {
         TEST
@@ -46,53 +316,68 @@ impl Command for Test {
 
     fn command(&self) -> clap::Command {
         clap::Command::new(TEST)
-            .about(r#"Built in unit testing capability to validate a Guard rules file against
-unit tests specified in YAML format to determine each individual rule's success
-or failure testing.
-"#)
-            .arg(Arg::new(RULES_FILE.0)
-                .long(RULES_FILE.0)
-                .short(RULES_FILE.1)
-                .action(ArgAction::Set)
-                .help("Provide a rules file"))
-            .arg(Arg::new(TEST_DATA.0)
-                .long(TEST_DATA.0)
-                .short(TEST_DATA.1)
-                .action(ArgAction::Set)
-                .help("Provide a file or dir for data files in JSON or YAML"))
-            .arg(Arg::new(DIRECTORY.0)
-                .long(DIRECTORY.0)
-                .short(DIRECTORY.1)
-                .action(ArgAction::Set)
-                .help("Provide the root directory for rules"))
-            .group(ArgGroup::new(RULES_AND_TEST_FILE)
-                .requires_all([RULES_FILE.0, TEST_DATA.0])
-                .conflicts_with(DIRECTORY_ONLY))
-            .group(ArgGroup::new(DIRECTORY_ONLY)
-                .args(["dir"])
-                .requires_all([DIRECTORY.0])
-                .conflicts_with(RULES_AND_TEST_FILE))
-            .arg(Arg::new(PREVIOUS_ENGINE.0)
-                .long(PREVIOUS_ENGINE.0)
-                .short(PREVIOUS_ENGINE.1)
-                .action(ArgAction::SetTrue)
-                .help("Uses the old engine for evaluation. This parameter will allow customers to evaluate old changes before migrating"))
-            .arg(Arg::new(ALPHABETICAL.0)
-                .long(ALPHABETICAL.0)
-                .short(ALPHABETICAL.1)
-                .action(ArgAction::SetTrue)
-                .help("Sort alphabetically inside a directory"))
-            .arg(Arg::new(LAST_MODIFIED.0)
-                .long(LAST_MODIFIED.0)
-                .short(LAST_MODIFIED.1)
-                .action(ArgAction::SetTrue)
-                .conflicts_with(ALPHABETICAL.0)
-                .help("Sort by last modified times within a directory"))
-            .arg(Arg::new(VERBOSE.0)
-                .long(VERBOSE.0)
-                .short(VERBOSE.1)
-                .action(ArgAction::SetTrue)
-                .help("Verbose logging"))
+            .about(TEST_ABOUT)
+            .arg(
+                Arg::new(RULES_FILE.0)
+                    .long(RULES_FILE.0)
+                    .short(RULES_FILE.1)
+                    .action(ArgAction::Set)
+                    .help(RULES_HELP),
+            )
+            .arg(
+                Arg::new(TEST_DATA.0)
+                    .long(TEST_DATA.0)
+                    .short(TEST_DATA.1)
+                    .action(ArgAction::Set)
+                    .help(TEST_DATA_HELP),
+            )
+            .arg(
+                Arg::new(DIRECTORY.0)
+                    .long(DIRECTORY.0)
+                    .short(DIRECTORY.1)
+                    .action(ArgAction::Set)
+                    .help(DIRECTORY_HELP),
+            )
+            .group(
+                ArgGroup::new(RULES_AND_TEST_FILE)
+                    .requires_all([RULES_FILE.0, TEST_DATA.0])
+                    .conflicts_with(DIRECTORY_ONLY),
+            )
+            .group(
+                ArgGroup::new(DIRECTORY_ONLY)
+                    .args(["dir"])
+                    .requires_all([DIRECTORY.0])
+                    .conflicts_with(RULES_AND_TEST_FILE),
+            )
+            .arg(
+                Arg::new(PREVIOUS_ENGINE.0)
+                    .long(PREVIOUS_ENGINE.0)
+                    .short(PREVIOUS_ENGINE.1)
+                    .action(ArgAction::SetTrue)
+                    .help(PREVIOUS_ENGINE_HELP),
+            )
+            .arg(
+                Arg::new(ALPHABETICAL.0)
+                    .long(ALPHABETICAL.0)
+                    .short(ALPHABETICAL.1)
+                    .action(ArgAction::SetTrue)
+                    .help(ALPHABETICAL_HELP),
+            )
+            .arg(
+                Arg::new(LAST_MODIFIED.0)
+                    .long(LAST_MODIFIED.0)
+                    .short(LAST_MODIFIED.1)
+                    .action(ArgAction::SetTrue)
+                    .conflicts_with(ALPHABETICAL.0)
+                    .help(LAST_MODIFIED_HELP),
+            )
+            .arg(
+                Arg::new(VERBOSE.0)
+                    .long(VERBOSE.0)
+                    .short(VERBOSE.1)
+                    .action(ArgAction::SetTrue)
+                    .help(VERBOSE_HELP),
+            )
             .arg_required_else_help(true)
     }
 
