@@ -1,5 +1,7 @@
 use super::super::*;
 use super::*;
+use crate::utils::reader::ReadBuffer;
+use crate::utils::reader::ReadBuffer::Stdin;
 
 #[test]
 fn test_deserialize_payload_success() {
@@ -34,6 +36,41 @@ fn test_deserialize_payload_unrecognized_property() {
 fn test_deserialize_payload_empty_input() {
     let serialized_payload = "";
     deserialize_payload(serialized_payload).unwrap();
+}
+
+#[test]
+fn test_handle_data_files_as_arg() -> Result<()> {
+    let path = String::from("resources/validate/data-dir");
+    let cmd = Validate2 {
+        data: vec![path],
+        ..Default::default()
+    };
+
+    let mut reader = Reader::new(Stdin(std::io::stdin()));
+
+    let data_files = cmd.handle_data_files(&mut reader)?;
+
+    assert_eq!(6, data_files.len());
+
+    Ok(())
+}
+
+#[test]
+fn test_handle_data_files_from_stdin() -> Result<()> {
+    let cmd = Validate2 {
+        ..Default::default()
+    };
+
+    let mut reader = Reader::new(ReadBuffer::File(
+        File::open("resources/validate/data-dir/s3-public-read-prohibited-template-compliant.yaml")
+            .expect("invalid path"),
+    ));
+
+    let data_files = cmd.handle_data_files(&mut reader)?;
+
+    assert_eq!(1, data_files.len());
+
+    Ok(())
 }
 
 #[test]

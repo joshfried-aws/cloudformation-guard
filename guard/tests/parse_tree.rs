@@ -10,6 +10,7 @@ mod parse_tree_tests {
     use rstest::rstest;
 
     use cfn_guard;
+    use cfn_guard::commands::parse_tree::ParseTree2;
     use cfn_guard::commands::{PARSE_TREE, PRINT_JSON, PRINT_YAML, RULES};
     use cfn_guard::utils::reader::ReadBuffer::Stdin;
     use cfn_guard::utils::reader::Reader;
@@ -174,5 +175,40 @@ mod parse_tree_tests {
 
         assert_eq!(expected_status_code, status_code);
         assert_output_from_file_eq!(expected_writer_output, writer)
+    }
+
+    #[rstest::rstest]
+    #[case(
+        "resources/validate/rules-dir/s3_bucket_server_side_encryption_enabled.guard",
+        YAML_S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED_PARSE_TREE,
+        StatusCode::SUCCESS
+    )]
+    #[case(
+        "resources/validate/rules-dir/s3_bucket_public_read_prohibited.guard",
+        S3_BUCKET_PUBLIC_READ_PROHIBITED_PARSE_TREE,
+        StatusCode::SUCCESS
+    )]
+    #[case(
+        "resources/validate/rules-dir/s3_bucket_logging_enabled.guard",
+        S3_BUCKET_LOGGING_ENABLED_PARSE_TREE,
+        StatusCode::SUCCESS
+    )]
+    fn test_yaml_output2(
+        #[case] rules_arg: &str,
+        #[case] expected_writer_output: &str,
+        #[case] expected_status_code: i32,
+    ) {
+        let mut reader = Reader::new(Stdin(std::io::stdin()));
+        let mut writer = Writer::new(WBVec(vec![]), WBVec(vec![]));
+        let cmd = ParseTree2 {
+            rules: Some(String::from(rules_arg)),
+            output: None,
+            print_json: false,
+            print_yaml: false,
+        };
+
+        let status_code = cmd.execute(&mut writer, &mut reader).unwrap();
+        assert_eq!(expected_status_code, status_code);
+        assert_output_from_str_eq!(expected_writer_output, writer)
     }
 }

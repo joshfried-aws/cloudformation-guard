@@ -99,12 +99,10 @@ impl Test2 {
                 .file_name()
                 .to_str()
                 .map(|name| {
-                    name.ends_with(".json")
-                        || name.ends_with(".yaml")
-                        || name.ends_with(".JSON")
-                        || name.ends_with(".YAML")
-                        || name.ends_with(".yml")
-                        || name.ends_with(".jsn")
+                    validate_filetype(
+                        vec![".json", ".yaml", ".JSON", ".YAML", ".jsn", ".yml"],
+                        name,
+                    )
                 })
                 .unwrap_or(false)
         })
@@ -218,7 +216,7 @@ impl Test2 {
     fn handle_directory_only(&self) -> Result<BTreeMap<String, Vec<GuardFile>>> {
         validate_path(self.directory.as_ref().unwrap())?;
 
-        let Files {
+        let AssessableFiles {
             mut guard,
             non_guard,
         } = self.build_files()?;
@@ -228,11 +226,7 @@ impl Test2 {
                 .file_name()
                 .to_str()
                 .map_or("".to_string(), |s| s.to_string());
-            if name.ends_with(".yaml")
-                || name.ends_with(".yml")
-                || name.ends_with(".json")
-                || name.ends_with(".jsn")
-            {
+            if validate_filetype(vec![".yaml", ".yml", ".json", ".jsn"], &name) {
                 let parent = file.path().parent();
 
                 if parent.map_or(false, |p| p.ends_with("tests")) {
@@ -254,47 +248,55 @@ impl Test2 {
         Ok(guard)
     }
 
-    fn build_files(&self) -> Result<Files> {
-        walkdir::WalkDir::new(self.directory.as_ref().unwrap())
+    // Create an iterator over the files in the directory, following simlinks, sorted by name and build our struct
+    fn build_files(&self) -> Result<AssessableFiles> {
+        walkdir::WalkDir::new(self.directory.clone().unwrap_or_default())
             .follow_links(true)
             .sort_by_file_name()
             .into_iter()
             .flatten()
             .into_iter()
             .filter(|file| file.path().is_file())
-            .try_fold(Files::default(), |mut files, file| -> Result<Files> {
-                let name = file
-                    .file_name()
-                    .to_str()
-                    .map_or("".to_string(), |s| s.to_string());
+            .try_fold(
+                AssessableFiles::default(),
+                |mut files, file| -> Result<AssessableFiles> {
+                    let name = file
+                        .file_name()
+                        .to_str()
+                        .map_or("".to_string(), |s| s.to_string());
 
-                if name.ends_with(".guard") || name.ends_with(".ruleset") {
-                    let prefix = name
-                        .strip_prefix(".guard")
-                        .or_else(|| name.strip_prefix(".ruleset"))
-                        .unwrap()
-                        .to_string();
+                    if validate_filetype(vec![".guard", ".ruleset"], &name) {
+                        let prefix = name
+                            .strip_prefix(".guard")
+                            .or_else(|| name.strip_prefix(".ruleset"))
+                            .unwrap()
+                            .to_string();
 
-                    files
-                        .guard
-                        .entry(
-                            file.path()
-                                .parent()
-                                .map_or("".to_string(), |p| format!("{}", p.display())),
-                        )
-                        .or_insert(vec![])
-                        .push(GuardFile {
-                            prefix,
-                            file,
-                            test_files: vec![],
-                        })
-                } else {
-                    files.non_guard.push(file);
-                }
+                        files
+                            .guard
+                            .entry(
+                                file.path()
+                                    .parent()
+                                    .map_or("".to_string(), |p| format!("{}", p.display())),
+                            )
+                            .or_insert(vec![])
+                            .push(GuardFile {
+                                prefix,
+                                file,
+                                test_files: vec![],
+                            })
+                    } else {
+                        files.non_guard.push(file);
+                    }
 
-                Ok(files)
-            })
+                    Ok(files)
+                },
+            )
     }
+}
+
+fn validate_filetype(options: Vec<&str>, file: &str) -> bool {
+    options.into_iter().any(|ext| file.ends_with(&ext))
 }
 
 struct GuardFile {
@@ -304,7 +306,7 @@ struct GuardFile {
 }
 
 #[derive(Default)]
-struct Files {
+struct AssessableFiles {
     guard: BTreeMap<String, Vec<GuardFile>>,
     non_guard: Vec<DirEntry>,
 }
