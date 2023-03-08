@@ -55,10 +55,7 @@ impl<'reporter> Reporter for TfAware<'reporter> {
     ) -> crate::rules::Result<()> {
         let root = data.root().unwrap();
         let is_tf_plan = match data.at("/resource_changes", root) {
-            Ok(_resource_changes) => match data.at("/terraform_version", root) {
-                Ok(_tf_version) => true,
-                _ => false,
-            },
+            Ok(_resource_changes) => matches!(data.at("/terraform_version", root), Ok(_tf_version)),
             _ => false,
         };
 
