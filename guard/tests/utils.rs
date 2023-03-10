@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Write;
-use std::io::{stdout, BufReader, Read};
+
+use std::io::{BufReader, Read};
 use std::path::PathBuf;
 
 use cfn_guard::command::Command;
@@ -13,13 +13,14 @@ use cfn_guard::commands::{
 };
 use cfn_guard::utils::reader::ReadBuffer::File as ReadFile;
 use cfn_guard::utils::reader::Reader;
-use cfn_guard::utils::writer::{WriteBuffer, Writer};
+use cfn_guard::utils::writer::Writer;
 
 #[non_exhaustive]
 pub struct StatusCode;
 
 const GUARD_TEST_APP_NAME: &str = "cfn-guard-test";
 
+#[allow(dead_code)]
 impl StatusCode {
     pub const SUCCESS: i32 = 0;
     pub const INTERNAL_FAILURE: i32 = -1;
@@ -36,7 +37,8 @@ pub fn read_from_resource_file(path: &str) -> String {
     let mut content = String::new();
     let mut reader = BufReader::new(File::open(resource.as_path()).unwrap());
     reader.read_to_string(&mut content).unwrap();
-    return content;
+
+    content
 }
 
 pub fn get_full_path_for_resource_file(path: &str) -> String {
@@ -64,24 +66,25 @@ pub fn compare_write_buffer_with_string(expected_output: &str, actual_output_wri
 pub trait CommandTestRunner {
     fn build_args(&self) -> Vec<String>;
 
-    fn run(&self, mut writer: &mut Writer, mut reader: &mut Reader) -> i32 {
+    fn run(&self, writer: &mut Writer, reader: &mut Reader) -> i32 {
         let mut app = clap::Command::new(GUARD_TEST_APP_NAME);
 
         let args = self.build_args();
 
-        let mut command_options =
+        let command_options =
             args.iter()
                 .fold(vec![String::from(GUARD_TEST_APP_NAME)], |mut res, arg| {
                     res.push(arg.to_string());
                     res
                 });
 
-        let mut commands: Vec<Box<dyn Command>> = Vec::with_capacity(2);
-        commands.push(Box::new(Validate::new()));
-        commands.push(Box::new(Test::new()));
-        commands.push(Box::new(ParseTree::new()));
-        commands.push(Box::new(Migrate::new()));
-        commands.push(Box::new(Rulegen::new()));
+        let commands: Vec<Box<dyn Command>> = vec![
+            Box::new(Validate::new()),
+            Box::new(Test::new()),
+            Box::new(ParseTree::new()),
+            Box::new(Migrate::new()),
+            Box::new(Rulegen::new()),
+        ];
 
         let mappings = commands.iter().map(|s| (s.name(), s)).fold(
             HashMap::with_capacity(commands.len()),
@@ -100,7 +103,7 @@ pub trait CommandTestRunner {
         match app.subcommand() {
             Some((name, value)) => {
                 if let Some(command) = mappings.get(name) {
-                    match (*command).execute(value, &mut writer, &mut reader) {
+                    match (*command).execute(value, writer, reader) {
                         Err(e) => {
                             writer
                                 .write_err(format!("Error occurred {e}"))
@@ -123,7 +126,7 @@ pub trait CommandTestRunner {
 #[macro_export]
 macro_rules! assert_output_from_file_eq {
     ($expected_output_relative_file_path: expr, $actual_output_writer: expr) => {
-        crate::utils::compare_write_buffer_with_file(
+        $crate::utils::compare_write_buffer_with_file(
             $expected_output_relative_file_path,
             $actual_output_writer,
         )
@@ -133,7 +136,7 @@ macro_rules! assert_output_from_file_eq {
 #[macro_export]
 macro_rules! assert_output_from_str_eq {
     ($expected_output: expr, $actual_output_writer: expr) => {
-        crate::utils::compare_write_buffer_with_string($expected_output, $actual_output_writer)
+        $crate::utils::compare_write_buffer_with_string($expected_output, $actual_output_writer)
     };
 }
 

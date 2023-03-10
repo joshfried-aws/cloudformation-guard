@@ -50,26 +50,23 @@ impl<'record, 'value, 'loc: 'value> EvalContext<'value, 'loc>
         query_retrieval(0, query, self.root, self)
     }
 
-    fn find_parameterized_rule(
-        &mut self,
-        rule_name: &str,
-    ) -> Result<&'value ParameterizedRule<'loc>> {
+    fn find_parameterized_rule(&mut self, _: &str) -> Result<&'value ParameterizedRule<'loc>> {
         todo!()
     }
 
     fn root(&mut self) -> &'value PathAwareValue {
         self.root
     }
-    fn rule_status(&mut self, rule_name: &str) -> Result<Status> {
+    fn rule_status(&mut self, _: &str) -> Result<Status> {
         todo!()
     }
-    fn resolve_variable(&mut self, variable_name: &str) -> Result<Vec<QueryResult<'value>>> {
+    fn resolve_variable(&mut self, _: &str) -> Result<Vec<QueryResult<'value>>> {
         todo!()
     }
     fn add_variable_capture_key(
         &mut self,
-        variable_name: &'value str,
-        key: &'value PathAwareValue,
+        _: &'value str,
+        _: &'value PathAwareValue,
     ) -> Result<()> {
         todo!()
     }

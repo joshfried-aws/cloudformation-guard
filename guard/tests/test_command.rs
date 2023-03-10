@@ -5,7 +5,6 @@ pub(crate) mod utils;
 
 #[cfg(test)]
 mod test_command_tests {
-
     use rstest::rstest;
 
     use crate::assert_output_from_file_eq;
@@ -223,9 +222,9 @@ mod test_command_tests {
         let mut reader = Reader::new(Stdin(std::io::stdin()));
         let mut writer = Writer::new(WBVec(vec![]), WBVec(vec![]));
         let status_code = TestCommandTestRunner::default()
-            .test_data(Some(&format!(
+            .test_data(Some(
                 "resources/test-command/data-dir/s3_bucket_server_side_encryption_enabled.yaml",
-            )))
+            ))
             .rules(Some(
                 "resources/validate/rules-dir/s3_bucket_server_side_encryption_enabled.guard",
             ))
