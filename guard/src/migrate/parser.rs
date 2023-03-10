@@ -88,11 +88,11 @@ pub(crate) struct PropertyComparison {
 }
 impl Display for PropertyComparison {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.property_path.starts_with(".") {
+        if self.property_path.starts_with('.') {
             write!(
                 f,
                 "{} {} {}",
-                self.property_path.trim_start_matches("."),
+                self.property_path.trim_start_matches('.'),
                 self.operator,
                 self.comparison_value
             )
@@ -220,7 +220,7 @@ pub(in crate::migrate) fn parse_complete_value(input: Span) -> IResult<Span, Spa
     match take_until("<<")(rule_remainder) {
         Ok(_result) => take_until("<<")(input),
         Err(nom::Err::Error(_e)) => Ok((remaining, rule_remainder)),
-        Err(e) => return Err(e),
+        Err(e) => Err(e),
     }
 }
 
@@ -348,7 +348,7 @@ pub(in crate::migrate) fn base_rule(input: Span) -> IResult<Span, BaseRule> {
                 custom_message: None,
             },
         )),
-        Err(e) => return Err(e),
+        Err(e) => Err(e),
     }
 }
 
@@ -390,8 +390,8 @@ pub(in crate::migrate) fn custom_message(input: Span) -> IResult<Span, String> {
 // returns enum value with rule structure
 pub(in crate::migrate) fn rule(input: Span) -> IResult<Span, Rule> {
     alt((
-        map(conditional_rule, |cond_rule| Rule::Conditional(cond_rule)),
-        map(base_rule, |simple_rule| Rule::Basic(simple_rule)),
+        map(conditional_rule, Rule::Conditional),
+        map(base_rule, Rule::Basic),
     ))(input)
 }
 
@@ -414,9 +414,9 @@ pub(in crate::migrate) fn empty_line(input: Span) -> IResult<Span, RuleLineType>
 pub(in crate::migrate) fn rule_line(input: Span) -> IResult<Span, RuleLineType> {
     let (remainder, rule_line) = alt((
         empty_line,
-        map(assignment, |a| RuleLineType::Assignment(a)),
-        map(clause, |c| RuleLineType::Clause(c)),
-        map(comment, |c| RuleLineType::Comment(c)),
+        map(assignment, RuleLineType::Assignment),
+        map(clause, RuleLineType::Clause),
+        map(comment, RuleLineType::Comment),
     ))(input)?;
     Ok((remainder, rule_line))
 }
@@ -426,7 +426,7 @@ pub(in crate::migrate) fn rule_line(input: Span) -> IResult<Span, RuleLineType> 
 // so subsequent lines are not part of the span to be parsed
 // returns vector of ruleline enums
 pub(crate) fn parse_rules_file(
-    input: &String,
+    input: &str,
     file_name: &String,
 ) -> Result<Vec<RuleLineType>, Error> {
     let lines = input.lines();
@@ -434,7 +434,7 @@ pub(crate) fn parse_rules_file(
     for (i, line) in lines.enumerate() {
         let context = format!("{}:{}", file_name, i);
 
-        let line_span = Span::new_extra(&line, context.as_str());
+        let line_span = Span::new_extra(line, context.as_str());
         let (_result, parsed_rule_line) = rule_line(line_span)?;
         rule_lines.push(parsed_rule_line);
     }

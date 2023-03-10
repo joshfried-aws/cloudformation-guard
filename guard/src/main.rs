@@ -29,12 +29,13 @@ fn main() -> Result<(), Error> {
         )
         .arg_required_else_help(true);
 
-    let mut commands: Vec<Box<dyn Command>> = Vec::with_capacity(2);
-    commands.push(Box::new(commands::parse_tree::ParseTree::new()));
-    commands.push(Box::new(commands::test::Test::new()));
-    commands.push(Box::new(commands::validate::Validate::new()));
-    commands.push(Box::new(commands::rulegen::Rulegen::new()));
-    commands.push(Box::new(commands::migrate::Migrate::new()));
+    let commands: Vec<Box<dyn Command>> = vec![
+        Box::new(commands::parse_tree::ParseTree::new()),
+        Box::new(commands::test::Test::new()),
+        Box::new(commands::validate::Validate::new()),
+        Box::new(commands::rulegen::Rulegen::new()),
+        Box::new(commands::migrate::Migrate::new()),
+    ];
 
     let mappings = commands.iter().map(|s| (s.name(), s)).fold(
         HashMap::with_capacity(commands.len()),
