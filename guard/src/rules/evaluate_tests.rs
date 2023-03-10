@@ -30,7 +30,7 @@ fn read_data(file: File) -> Result<Value> {
     let context = read_file_content(file)?;
     match serde_json::from_str::<serde_json::Value>(&context) {
         Ok(value) => Value::try_from(value),
-        Err(e) => {
+        Err(_) => {
             let value = serde_yaml::from_str::<serde_yaml::Value>(&context)?;
             Value::try_from(value)
         }
@@ -1455,7 +1455,7 @@ fn test_compare_loop_all() -> Result<()> {
     let lhs_values = lhs.iter().collect::<Vec<&PathAwareValue>>();
     let rhs_values = rhs.iter().collect::<Vec<&PathAwareValue>>();
 
-    let results = super::compare_loop_all(&lhs_values, &rhs_values, path_value::compare_eq, false)?;
+    let results = compare_loop_all(&lhs_values, &rhs_values, path_value::compare_eq, false)?;
     //
     // One result for each LHS value
     //
@@ -1487,12 +1487,12 @@ fn test_compare_lists() -> Result<()> {
     let rhs = vec![&value];
 
     let query = [];
-    let r = super::compare(
+    let r = compare(
         &lhs,
         &query,
         &rhs,
         None,
-        super::super::path_value::compare_eq,
+        path_value::compare_eq,
         false,
         false,
     )?;
@@ -2145,7 +2145,7 @@ fn test_multiple_valued_clause_reporting() -> Result<()> {
     "###;
 
     #[derive(Debug, Clone)]
-    struct Reporter {};
+    struct Reporter {}
     impl EvaluationContext for Reporter {
         fn resolve_variable(&self, variable: &str) -> Result<Vec<&PathAwareValue>> {
             todo!()
@@ -2223,7 +2223,7 @@ fn test_multiple_valued_clause_reporting_var_access() -> Result<()> {
 
     struct Reporter<'a> {
         root: &'a dyn EvaluationContext,
-    };
+    }
     impl<'a> EvaluationContext for Reporter<'a> {
         fn resolve_variable(&self, variable: &str) -> Result<Vec<&PathAwareValue>> {
             self.root.resolve_variable(variable)

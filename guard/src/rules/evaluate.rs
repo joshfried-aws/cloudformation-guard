@@ -47,9 +47,9 @@ pub(super) fn resolve_variable_query<'s>(
     Ok(acc)
 }
 
-pub(super) fn resolve_query<'s, 'loc>(
+pub(super) fn resolve_query<'s>(
     all: bool,
-    query: &[QueryPart<'loc>],
+    query: &[QueryPart],
     context: &'s PathAwareValue,
     var_resolver: &'s dyn EvaluationContext,
 ) -> Result<Vec<&'s PathAwareValue>> {
@@ -85,10 +85,7 @@ fn compare_loop_all<F>(
     rhs: &Vec<&PathAwareValue>,
     compare: F,
     any_one_rhs: bool,
-) -> Result<(
-    bool,
-    Vec<(bool, Option<PathAwareValue>, Option<PathAwareValue>)>,
-)>
+) -> CompareLoopResult
 where
     F: Fn(&PathAwareValue, &PathAwareValue) -> Result<bool>,
 {
@@ -97,7 +94,7 @@ where
     'lhs: for lhs_value in lhs {
         let mut acc = Vec::with_capacity(lhs.len());
         for rhs_value in rhs {
-            let check = compare(*lhs_value, *rhs_value)?;
+            let check = compare(lhs_value, rhs_value)?;
             if check {
                 if any_one_rhs {
                     acc.clear();
@@ -124,16 +121,19 @@ where
     Ok((lhs_cmp, results))
 }
 
+type CompareLoopResult = Result<(
+    bool,
+    Vec<(bool, Option<PathAwareValue>, Option<PathAwareValue>)>,
+)>;
+
+#[allow(clippy::never_loop)]
 fn compare_loop<F>(
     lhs: &Vec<&PathAwareValue>,
     rhs: &Vec<&PathAwareValue>,
     compare: F,
     any_one_rhs: bool,
     atleast_one: bool,
-) -> Result<(
-    bool,
-    Vec<(bool, Option<PathAwareValue>, Option<PathAwareValue>)>,
-)>
+) -> CompareLoopResult
 where
     F: Fn(&PathAwareValue, &PathAwareValue) -> Result<bool>,
 {
@@ -145,10 +145,8 @@ where
                     if *each {
                         break 'outer true;
                     }
-                } else {
-                    if !*each {
-                        break 'outer false;
-                    }
+                } else if !*each {
+                    break 'outer false;
                 }
             }
             if atleast_one {
@@ -217,6 +215,7 @@ fn merge_mixed_results<'a>(incoming: &'a [&PathAwareValue]) -> Vec<&'a PathAware
     merged
 }
 
+#[allow(clippy::type_complexity)]
 fn compare<F>(
     lhs: &Vec<&PathAwareValue>,
     _lhs_query: &[QueryPart<'_>],
@@ -289,32 +288,6 @@ where
     }
 }
 
-//impl<'loc> std::fmt::Display for GuardAccessClause<'loc> {
-//    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//        f.write_fmt(
-//            format_args!(
-//                "Clause({}, Check: {} {} {} {})",
-//                self.access_clause.location,
-//                SliceDisplay(&self.access_clause.query.query),
-//                if self.access_clause.comparator.1 { "NOT" } else { "" },
-//                self.access_clause.comparator.0,
-//                match &self.access_clause.compare_with {
-//                    Some(v) => {
-//                        match v {
-//                            // TODO add Display for Value
-//                            LetValue::Value(val) => format!("{:?}", val),
-//                            LetValue::AccessClause(qry) => format!("{}", SliceDisplay(&qry.query)),
-//
-//                        }
-//                    },
-//                    None => "".to_string()
-//                },
-//            )
-//        )?;
-//        Ok(())
-//    }
-//}
-
 pub(super) fn invert_closure<F>(
     f: F,
     clause_not: bool,
@@ -331,13 +304,13 @@ where
     }
 }
 
+#[allow(clippy::never_loop)]
 impl<'loc> Evaluate for GuardAccessClause<'loc> {
     fn evaluate<'s>(
         &self,
         context: &'s PathAwareValue,
         var_resolver: &'s dyn EvaluationContext,
     ) -> Result<Status> {
-        //var_resolver.start_evaluation(EvaluationType::Clause, &guard_loc);
         let clause = self;
 
         let all = self.access_clause.query.match_all;
@@ -411,13 +384,7 @@ impl<'loc> Evaluate for GuardAccessClause<'loc> {
                 None => Some(negation_status(false, not, clause.negation)),
                 Some(l) => Some(negation_status(
                     l.iter()
-                        .find(|p| {
-                            if let PathAwareValue::String(_) = **p {
-                                false
-                            } else {
-                                true
-                            }
-                        })
+                        .find(|p| !matches!(**p, PathAwareValue::String(_)))
                         .map_or(true, |_i| false),
                     not,
                     clause.negation,
@@ -428,13 +395,7 @@ impl<'loc> Evaluate for GuardAccessClause<'loc> {
                 None => Some(negation_status(false, not, clause.negation)),
                 Some(l) => Some(negation_status(
                     l.iter()
-                        .find(|p| {
-                            if let PathAwareValue::List(_) = **p {
-                                false
-                            } else {
-                                true
-                            }
-                        })
+                        .find(|p| !matches!(**p, PathAwareValue::List(_)))
                         .map_or(true, |_i| false),
                     not,
                     clause.negation,
@@ -445,13 +406,7 @@ impl<'loc> Evaluate for GuardAccessClause<'loc> {
                 None => Some(negation_status(false, not, clause.negation)),
                 Some(l) => Some(negation_status(
                     l.iter()
-                        .find(|p| {
-                            if let PathAwareValue::Map(_) = **p {
-                                false
-                            } else {
-                                true
-                            }
-                        })
+                        .find(|p| !matches!(**p, PathAwareValue::Map(_)))
                         .map_or(true, |_i| false),
                     not,
                     clause.negation,
@@ -493,17 +448,17 @@ impl<'loc> Evaluate for GuardAccessClause<'loc> {
                 let guard_loc = format!("{}", self);
                 let mut auto_reporter =
                     AutoReport::new(EvaluationType::Clause, var_resolver, &guard_loc);
-                if all {
-                    return Ok(auto_reporter
+                return if all {
+                    Ok(auto_reporter
                         .status(Status::FAIL)
                         .message(retrieve_error.map_or("".to_string(), |e| e))
-                        .get_status());
+                        .get_status())
                 } else {
-                    return Ok(auto_reporter
+                    Ok(auto_reporter
                         .status(Status::FAIL)
                         .message(retrieve_error.map_or("".to_string(), |e| e))
-                        .get_status());
-                }
+                        .get_status())
+                };
             }
             Some(l) => l,
         };
@@ -726,6 +681,7 @@ impl<'loc> Evaluate for GuardNamedRuleClause<'loc> {
     }
 }
 
+#[allow(clippy::never_loop)]
 impl<'loc> Evaluate for GuardClause<'loc> {
     fn evaluate<'s>(
         &self,
@@ -770,11 +726,12 @@ impl<'loc, T: Evaluate + 'loc> Evaluate for Block<'loc, T> {
         context: &'s PathAwareValue,
         var_resolver: &'s dyn EvaluationContext,
     ) -> Result<Status> {
-        let block = BlockScope::new(&self, context, var_resolver)?;
+        let block = BlockScope::new(self, context, var_resolver)?;
         self.conjunctions.evaluate(context, &block)
     }
 }
 
+#[allow(clippy::never_loop)]
 impl<'loc, T: Evaluate + 'loc> Evaluate for Conjunctions<T> {
     fn evaluate<'s>(
         &self,
@@ -832,6 +789,7 @@ impl<'loc, T: Evaluate + 'loc> Evaluate for Conjunctions<T> {
     }
 }
 
+#[allow(clippy::never_loop)]
 impl<'loc> Evaluate for BlockGuardClause<'loc> {
     fn evaluate<'s>(
         &self,
@@ -917,6 +875,7 @@ impl<'loc> Evaluate for WhenGuardClause<'loc> {
     }
 }
 
+#[allow(clippy::never_loop)]
 impl<'loc> Evaluate for TypeBlock<'loc> {
     fn evaluate<'s>(
         &self,
@@ -963,7 +922,7 @@ impl<'loc> Evaluate for TypeBlock<'loc> {
                 let mut each_type_report =
                     AutoReport::new(EvaluationType::Type, var_resolver, &type_context);
                 match each_type_report
-                    .status(self.block.evaluate(*each, var_resolver)?)
+                    .status(self.block.evaluate(each, var_resolver)?)
                     .get_status()
                 {
                     Status::PASS => {
@@ -1102,6 +1061,7 @@ fn extract_variables<'s, 'loc>(
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct RootScope<'s, 'loc> {
     rules: &'s RulesFile<'loc>,
     input_context: &'s PathAwareValue,
@@ -1143,8 +1103,8 @@ impl<'s, 'loc> EvaluationContext for RootScope<'s, 'loc> {
             return Ok(value.clone());
         }
         return if let Some((key, query)) = self.pending_queries.get_key_value(variable) {
-            let all = (*query).match_all;
-            let query: &[QueryPart<'_>] = &(*query).query;
+            let all = query.match_all;
+            let query: &[QueryPart<'_>] = &query.query;
             let values = match query[0].variable() {
                 Some(var) => resolve_variable_query(all, var, query, self)?,
                 None => {
@@ -1200,6 +1160,7 @@ impl<'s, 'loc> EvaluationContext for RootScope<'s, 'loc> {
     fn start_evaluation(&self, _eval_type: EvaluationType, _context: &str) {}
 }
 
+#[allow(dead_code)]
 pub(crate) struct BlockScope<'s, T> {
     block_type: &'s Block<'s, T>,
     input_context: &'s PathAwareValue,
@@ -1239,8 +1200,8 @@ impl<'s, T> EvaluationContext for BlockScope<'s, T> {
             return Ok(value.clone());
         }
         return if let Some((key, query)) = self.pending_queries.get_key_value(variable) {
-            let all = (*query).match_all;
-            let query: &[QueryPart<'_>] = &(*query).query;
+            let all = query.match_all;
+            let query: &[QueryPart<'_>] = &query.query;
             let values = match query[0].variable() {
                 Some(var) => resolve_variable_query(all, var, query, self)?,
                 None => {
@@ -1321,20 +1282,6 @@ impl<'s> AutoReport<'s> {
 
     pub(super) fn status(&mut self, status: Status) -> &mut Self {
         self.status = Some(status);
-        self
-    }
-
-    pub(super) fn comparison(
-        &mut self,
-        status: Status,
-        from: Option<PathAwareValue>,
-        to: Option<PathAwareValue>,
-        cmp: (CmpOperator, bool),
-    ) -> &mut Self {
-        self.status = Some(status);
-        self.from = from;
-        self.to = to;
-        self.cmp = Some(cmp);
         self
     }
 

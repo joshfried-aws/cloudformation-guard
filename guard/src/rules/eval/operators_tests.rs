@@ -1,10 +1,7 @@
 use super::*;
 use crate::rules::eval_context::eval_context_tests::BasicQueryTesting;
-use crate::rules::eval_context::EventRecord;
-use crate::rules::exprs::{AccessQuery, GuardClause, RulesFile};
-use crate::rules::values::Value;
-use crate::rules::RecordType;
-use crate::rules::{EvalContext, NamedStatus, Status};
+use crate::rules::exprs::AccessQuery;
+use crate::rules::EvalContext;
 use std::convert::TryFrom;
 
 const RESOURCES: &str = r###"
@@ -109,11 +106,10 @@ fn test_operator_eq_literal() -> crate::rules::Result<()> {
     let count = result
         .iter()
         .filter(|r| {
-            if let ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_)) = r {
-                true
-            } else {
-                false
-            }
+            matches!(
+                r,
+                ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_))
+            )
         })
         .count();
     assert_eq!(count, 1);
@@ -130,11 +126,10 @@ fn test_operator_eq_literal() -> crate::rules::Result<()> {
     let count = result
         .iter()
         .filter(|r| {
-            if let ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_)) = r {
-                true
-            } else {
-                false
-            }
+            matches!(
+                r,
+                ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_))
+            )
         })
         .count();
     assert_eq!(count, 2);
@@ -170,13 +165,10 @@ fn test_operator_eq_queries() -> crate::rules::Result<()> {
     };
     assert_eq!(result.len(), 1);
     let eval_result = &result[0];
-    assert_eq!(
-        matches!(
-            eval_result,
-            ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_))
-        ),
-        true
-    );
+    assert!(matches!(
+        eval_result,
+        ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_))
+    ));
 
     Ok(())
 }
@@ -228,21 +220,21 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.rhs, &rhs_scalar), true);
-                assert_eq!(matches!(pair.lhs, PathAwareValue::String(_)), true);
+                assert!(std::ptr::eq(pair.rhs, &rhs_scalar));
+                assert!(matches!(pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.lhs {
                     let path = p.0.as_str();
-                    assert_eq!(path == "/LHS/List/0" || path == "/LHS/List/2", true);
-                    assert_eq!(v.as_str() == "ec2:*" || v.as_str() == "s3:*", true);
+                    assert!(path == "/LHS/List/0" || path == "/LHS/List/2");
+                    assert!(v.as_str() == "ec2:*" || v.as_str() == "s3:*");
                 }
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.rhs, &rhs_scalar), true);
-                assert_eq!(matches!(pair.lhs, PathAwareValue::String(_)), true);
+                assert!(std::ptr::eq(pair.rhs, &rhs_scalar));
+                assert!(matches!(pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.lhs {
                     let path = p.0.as_str();
-                    assert_eq!(path == "/LHS/List/1" || path == "/LHS/Scalar", true);
+                    assert!(path == "/LHS/List/1" || path == "/LHS/Scalar");
                     assert_eq!(v.as_str(), "*");
                 }
             }
@@ -268,21 +260,21 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.lhs, &rhs_scalar), true);
-                assert_eq!(matches!(pair.rhs, PathAwareValue::String(_)), true);
+                assert!(std::ptr::eq(pair.lhs, &rhs_scalar));
+                assert!(matches!(pair.rhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.rhs {
                     let path = p.0.as_str();
-                    assert_eq!(path == "/LHS/List/0" || path == "/LHS/List/2", true);
-                    assert_eq!(v.as_str() == "ec2:*" || v.as_str() == "s3:*", true);
+                    assert!(path == "/LHS/List/0" || path == "/LHS/List/2");
+                    assert!(v.as_str() == "ec2:*" || v.as_str() == "s3:*");
                 }
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.lhs, &rhs_scalar), true);
-                assert_eq!(matches!(pair.rhs, PathAwareValue::String(_)), true);
+                assert!(std::ptr::eq(pair.lhs, &rhs_scalar));
+                assert!(matches!(pair.rhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.rhs {
                     let path = p.0.as_str();
-                    assert_eq!(path == "/LHS/List/1" || path == "/LHS/Scalar", true);
+                    assert!(path == "/LHS/List/1" || path == "/LHS/Scalar");
                     assert_eq!(v.as_str(), "*");
                 }
             }
@@ -325,13 +317,13 @@ fn test_operator_in_scalar_literal_to_query_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert_eq!(std::ptr::eq(val.lhs, &scalar_literal_value), true);
-                assert_eq!(std::ptr::eq(val.rhs, &scalar_query_list_value), true);
+                assert!(std::ptr::eq(val.lhs, &scalar_literal_value));
+                assert!(std::ptr::eq(val.rhs, &scalar_query_list_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.lhs, &scalar_literal_value), true);
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_query_value), true);
+                assert!(std::ptr::eq(pair.lhs, &scalar_literal_value));
+                assert!(std::ptr::eq(pair.rhs, &scalar_query_value));
             }
 
             rest => {
@@ -378,14 +370,14 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ListIn(l))) => {
-                assert_eq!(l.diff.is_empty(), true);
-                assert_eq!(std::ptr::eq(l.rhs, &scalar_query_list_value), true);
-                assert_eq!(std::ptr::eq(l.lhs, &list_literal_value), true);
+                assert!(l.diff.is_empty());
+                assert!(std::ptr::eq(l.rhs, &scalar_query_list_value));
+                assert!(std::ptr::eq(l.lhs, &list_literal_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::NotComparable(nc)) => {
-                assert_eq!(std::ptr::eq(nc.pair.lhs, &list_literal_value), true);
-                assert_eq!(std::ptr::eq(nc.pair.rhs, &scalar_query_value), true);
+                assert!(std::ptr::eq(nc.pair.lhs, &list_literal_value));
+                assert!(std::ptr::eq(nc.pair.rhs, &scalar_query_value));
             }
 
             rest => {
@@ -427,14 +419,14 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_literal_value), true);
-                assert_eq!(matches!(pair.lhs, PathAwareValue::String(_)), true);
+                assert!(std::ptr::eq(pair.rhs, &scalar_literal_value));
+                assert!(matches!(pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.lhs {
-                    if &p.0 == "" {
-                        assert_eq!(std::ptr::eq(pair.lhs, &scalar_query_value), true);
+                    if p.0.is_empty() {
+                        assert!(std::ptr::eq(pair.lhs, &scalar_query_value));
                     } else {
                         assert_eq!(&p.0, "/1");
-                        assert_eq!(v == "*", true);
+                        assert_eq!(v, "*");
                     }
                 }
             }
@@ -443,8 +435,8 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
             // As "ec2*" in "*" FAILs
             //
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_literal_value), true);
-                assert_eq!(matches!(pair.lhs, PathAwareValue::String(_)), true);
+                assert!(std::ptr::eq(pair.rhs, &scalar_literal_value));
+                assert!(matches!(pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.lhs {
                     assert_eq!(&p.0, "/0");
                     assert_eq!(v, "ec2*");
@@ -472,13 +464,13 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.lhs, &scalar_literal_value), true);
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_query_value), true);
+                assert!(std::ptr::eq(pair.lhs, &scalar_literal_value));
+                assert!(std::ptr::eq(pair.rhs, &scalar_query_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert_eq!(std::ptr::eq(val.lhs, &scalar_literal_value), true);
-                assert_eq!(std::ptr::eq(val.rhs, &scalar_query_list_value), true);
+                assert!(std::ptr::eq(val.lhs, &scalar_literal_value));
+                assert!(std::ptr::eq(val.rhs, &scalar_query_list_value));
             }
 
             rest => {
@@ -524,16 +516,16 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
                 //
                 // RHS value pointer is the same
                 //
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_literal_value), true);
+                assert!(std::ptr::eq(pair.rhs, &scalar_literal_value));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert_eq!(matches!(pair.lhs, PathAwareValue::String(_)), true);
+                assert!(matches!(pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.lhs {
                     match p.0.as_str() {
                         "" => {
-                            assert_eq!(std::ptr::eq(pair.lhs, &scalar_query_value), true);
+                            assert!(std::ptr::eq(pair.lhs, &scalar_query_value));
                         }
 
                         "/0" => {
@@ -615,16 +607,16 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 //
                 // RHS value pointer is the same
                 //
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_literal_value), true);
+                assert!(std::ptr::eq(pair.rhs, &scalar_literal_value));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert_eq!(matches!(pair.lhs, PathAwareValue::String(_)), true);
+                assert!(matches!(pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.lhs {
                     match p.0.as_str() {
                         "" => {
-                            assert_eq!(std::ptr::eq(pair.lhs, &scalar_query_value), true);
+                            assert!(std::ptr::eq(pair.lhs, &scalar_query_value));
                         }
 
                         "/0" => {
@@ -649,12 +641,12 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 //
                 // RHS value pointer is the same
                 //
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_literal_value), true);
+                assert!(std::ptr::eq(pair.rhs, &scalar_literal_value));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert_eq!(matches!(pair.lhs, PathAwareValue::String(_)), true);
+                assert!(matches!(pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = pair.lhs {
                     assert_eq!(&p.0, "/3");
                     assert_eq!(v, "iam*");
@@ -728,20 +720,20 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::QueryIn(lin))) => {
-                assert_eq!(lin.diff.is_empty(), true);
+                assert!(lin.diff.is_empty());
                 for each in lin.lhs {
                     if each.is_scalar() {
-                        assert_eq!(std::ptr::eq(each, &lhs_scalar_value), true);
+                        assert!(std::ptr::eq(each, &lhs_scalar_value));
                     } else {
-                        assert_eq!(std::ptr::eq(each, &lhs_list_value), true);
+                        assert!(std::ptr::eq(each, &lhs_list_value));
                     }
                 }
 
                 for each in lin.rhs {
                     if each.is_scalar() {
-                        assert_eq!(std::ptr::eq(each, &rhs_scalar_query_value), true);
+                        assert!(std::ptr::eq(each, &rhs_scalar_query_value));
                     } else {
-                        assert_eq!(std::ptr::eq(each, &rhs_scalar_query_list_value), true);
+                        assert!(std::ptr::eq(each, &rhs_scalar_query_list_value));
                     }
                 }
             }
@@ -773,16 +765,16 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::QueryIn(qin))) => {
-                assert_eq!(qin.diff.is_empty(), true);
+                assert!(qin.diff.is_empty());
                 for each in qin.lhs {
                     if each.is_scalar() {
-                        assert_eq!(std::ptr::eq(each, &lhs_scalar_value), true);
+                        assert!(std::ptr::eq(each, &lhs_scalar_value));
                     } else {
-                        assert_eq!(std::ptr::eq(each, &lhs_list_value), true);
+                        assert!(std::ptr::eq(each, &lhs_list_value));
                     }
                 }
                 for each in qin.rhs {
-                    assert_eq!(std::ptr::eq(each, &rhs_scalar_query_list_value), true);
+                    assert!(std::ptr::eq(each, &rhs_scalar_query_list_value));
                 }
             }
 
@@ -865,13 +857,13 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::QueryIn(qin))) => {
-                assert_eq!(qin.diff.is_empty(), true);
+                assert!(qin.diff.is_empty());
                 assert_eq!(qin.rhs.len(), 2);
-                assert_eq!(std::ptr::eq(qin.rhs[0], &rhs_scalar_query_value), true);
-                assert_eq!(std::ptr::eq(qin.rhs[1], &rhs_scalar_query_list_value), true);
+                assert!(std::ptr::eq(qin.rhs[0], &rhs_scalar_query_value));
+                assert!(std::ptr::eq(qin.rhs[1], &rhs_scalar_query_list_value));
                 assert_eq!(qin.lhs.len(), 2);
-                assert_eq!(std::ptr::eq(qin.lhs[0], &lhs_scalar_value), true);
-                assert_eq!(std::ptr::eq(qin.lhs[1], &lhs_list_value), true);
+                assert!(std::ptr::eq(qin.lhs[0], &lhs_scalar_value));
+                assert!(std::ptr::eq(qin.lhs[1], &lhs_list_value));
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
@@ -901,11 +893,11 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::QueryIn(qin))) => {
-                assert_eq!(qin.diff.is_empty(), false);
+                assert!(!qin.diff.is_empty());
                 assert_eq!(qin.diff.len(), 1);
-                assert_eq!(std::ptr::eq(qin.diff[0], &lhs_scalar_value), true);
+                assert!(std::ptr::eq(qin.diff[0], &lhs_scalar_value));
                 assert_eq!(qin.rhs.len(), 1);
-                assert_eq!(std::ptr::eq(qin.rhs[0], &rhs_scalar_query_list_value), true);
+                assert!(std::ptr::eq(qin.rhs[0], &rhs_scalar_query_list_value));
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
@@ -933,11 +925,11 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::QueryIn(qin))) => {
-                assert_eq!(qin.diff.is_empty(), false);
+                assert!(!qin.diff.is_empty());
                 assert_eq!(qin.diff.len(), 1);
-                assert_eq!(std::ptr::eq(qin.diff[0], &lhs_list_value), true);
+                assert!(std::ptr::eq(qin.diff[0], &lhs_list_value));
                 assert_eq!(qin.rhs.len(), 1);
-                assert_eq!(std::ptr::eq(qin.rhs[0], &rhs_scalar_query_list_value), true);
+                assert!(std::ptr::eq(qin.rhs[0], &rhs_scalar_query_list_value));
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
@@ -973,7 +965,7 @@ fn test_operator_in_literal_list_in_query_ok() -> crate::rules::Result<()> {
                     ValueEvalResult::ComparisonResult(ComparisonResult::Fail(
                         Compare::QueryIn(QueryIn { diff, .. }),
                     )) => {
-                        assert_eq!(diff.is_empty(), false, "{:?}", diff);
+                        assert!(!diff.is_empty());
                     }
                     _ => unreachable!(),
                 }
@@ -1023,17 +1015,17 @@ fn test_operator_in_scalar_literal_to_query_ok_with_unresolved() -> crate::rules
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(std::ptr::eq(pair.lhs, &scalar_literal_value), true);
-                assert_eq!(std::ptr::eq(pair.rhs, &scalar_query_value), true);
+                assert!(std::ptr::eq(pair.lhs, &scalar_literal_value));
+                assert!(std::ptr::eq(pair.rhs, &scalar_query_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert_eq!(std::ptr::eq(val.lhs, &scalar_literal_value), true);
-                assert_eq!(std::ptr::eq(val.rhs, &scalar_query_list_value), true);
+                assert!(std::ptr::eq(val.lhs, &scalar_literal_value));
+                assert!(std::ptr::eq(val.rhs, &scalar_query_list_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(inur, lhs)) => {
-                assert_eq!(std::ptr::eq(lhs, &scalar_literal_value), true);
+                assert!(std::ptr::eq(lhs, &scalar_literal_value));
                 assert_eq!(ur, inur);
             }
 
@@ -1067,13 +1059,10 @@ fn test_operator_eq_vs_in_from_queries() -> crate::rules::Result<()> {
     };
     assert_eq!(result.len(), 1);
     let eval_result = &result[0];
-    assert_eq!(
-        matches!(
-            eval_result,
-            ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_))
-        ),
-        true
-    );
+    assert!(matches!(
+        eval_result,
+        ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_))
+    ));
 
     let result = (CmpOperator::In, false).compare(&lhs_answers, &rhs_answers)?;
     let result = match result {
@@ -1081,16 +1070,10 @@ fn test_operator_eq_vs_in_from_queries() -> crate::rules::Result<()> {
         _ => unreachable!(),
     };
     assert_eq!(result.len(), 1);
-    assert_eq!(
-        result
-            .iter()
-            .find(|r| match r {
-                ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_)) => true,
-                _ => false,
-            })
-            .is_some(),
-        false
-    );
+    assert!(!result.iter().any(|r| matches!(
+        r,
+        ValueEvalResult::ComparisonResult(ComparisonResult::Fail(_))
+    )));
 
     Ok(())
 }

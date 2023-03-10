@@ -98,14 +98,14 @@ impl<'value> Display for ValueOnlyDisplay<'value> {
     }
 }
 
-impl std::fmt::Display for PathAwareValue {
+impl Display for PathAwareValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("Path={} Value=", self.self_path()))?;
         ValueOnlyDisplay(self).fmt(f)
     }
 }
 
-impl<'value> std::fmt::Display for QueryResult<'value> {
+impl<'value> Display for QueryResult<'value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             QueryResult::Literal(l) => {
@@ -124,7 +124,7 @@ impl<'value> std::fmt::Display for QueryResult<'value> {
     }
 }
 
-impl<'value> std::fmt::Display for ClauseCheck<'value> {
+impl<'value> Display for ClauseCheck<'value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ClauseCheck::Success => {
@@ -197,7 +197,7 @@ impl<'value> std::fmt::Display for ClauseCheck<'value> {
     }
 }
 
-impl<'value> std::fmt::Display for RecordType<'value> {
+impl<'value> Display for RecordType<'value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             //
@@ -315,7 +315,7 @@ impl<'value> std::fmt::Display for RecordType<'value> {
     }
 }
 
-impl<'value> std::fmt::Display for EventRecord<'value> {
+impl<'value> Display for EventRecord<'value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "{}[Context={}]",

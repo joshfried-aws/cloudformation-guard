@@ -19,7 +19,6 @@ use std::collections::{HashMap, HashSet};
 
 pub(crate) struct Scope<'value, 'loc: 'value> {
     root: &'value PathAwareValue,
-    //resolved_variables: std::cell::RefCell<HashMap<&'value str, Vec<QueryResult<'value>>>>,
     resolved_variables: HashMap<&'value str, Vec<QueryResult<'value>>>,
     literals: HashMap<&'value str, &'value PathAwareValue>,
     variable_queries: HashMap<&'value str, &'value AccessQuery<'loc>>,
@@ -41,6 +40,7 @@ pub(crate) struct RootScope<'value, 'loc: 'value> {
 }
 
 impl<'value, 'loc: 'value> RootScope<'value, 'loc> {
+    #[cfg(test)]
     pub fn reset_root(self, new_root: &'value PathAwareValue) -> Result<RootScope<'value, 'loc>> {
         root_scope_with(
             self.scope.literals,
@@ -62,34 +62,6 @@ impl<'value, 'loc: 'value> RootScope<'value, 'loc> {
     }
 }
 
-pub(crate) fn reset_with<'value, 'loc: 'value>(
-    mut root_scope: RootScope<'value, 'loc>,
-    new_value: &'value PathAwareValue,
-) -> RootScope<'value, 'loc> {
-    let variables = std::mem::replace(&mut root_scope.scope.variable_queries, HashMap::new());
-    let literals = std::mem::replace(&mut root_scope.scope.literals, HashMap::new());
-    let rules = std::mem::replace(&mut root_scope.rules, HashMap::new());
-    let parameterized_rules =
-        std::mem::replace(&mut root_scope.parameterized_rules, HashMap::new());
-    let scope = Scope {
-        root: new_value,
-        //resolved_variables: std::cell::RefCell::new(HashMap::new()),
-        resolved_variables: HashMap::new(),
-        literals: literals,
-        variable_queries: variables,
-    };
-    RootScope {
-        scope,
-        rules,
-        parameterized_rules,
-        rules_status: HashMap::new(),
-        recorder: RecordTracker {
-            final_event: None,
-            events: vec![],
-        },
-    }
-}
-
 pub(crate) struct BlockScope<'value, 'loc: 'value, 'eval> {
     scope: Scope<'value, 'loc>,
     parent: &'eval mut dyn EvalContext<'value, 'loc>,
@@ -100,12 +72,14 @@ pub(crate) struct ValueScope<'value, 'eval, 'loc: 'value> {
     pub(crate) parent: &'eval mut dyn EvalContext<'value, 'loc>,
 }
 
-fn extract_variables<'value, 'loc: 'value>(
-    expressions: &'value Vec<LetExpr<'loc>>,
-) -> Result<(
+type ExtractVariableResult<'value, 'loc> = Result<(
     HashMap<&'value str, &'value PathAwareValue>,
     HashMap<&'value str, &'value AccessQuery<'loc>>,
-)> {
+)>;
+
+fn extract_variables<'value, 'loc: 'value>(
+    expressions: &'value Vec<LetExpr<'loc>>,
+) -> ExtractVariableResult<'value, 'loc> {
     let mut literals = HashMap::with_capacity(expressions.len());
     let mut queries = HashMap::with_capacity(expressions.len());
     for each in expressions {
@@ -313,8 +287,10 @@ fn check_and_delegate<'value, 'loc: 'value>(
     }
 }
 
+type Converter = (fn(&str) -> bool, fn(&str) -> String);
+
 lazy_static! {
-    static ref CONVERTERS: &'static [(fn(&str) -> bool, fn(&str) -> String)] = &[
+    static ref CONVERTERS: &'static [Converter] = &[
         (camelcase::is_camel_case, camelcase::to_camel_case),
         (classcase::is_class_case, classcase::to_class_case),
         (kebabcase::is_kebab_case, kebabcase::to_kebab_case),
@@ -491,7 +467,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                                         }
                                                     },
 
-                                                    rest => {
+                                                    _rest => {
                                                         return Err(Error
                                                             ::NotComparable(
                                                                 format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
@@ -799,7 +775,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                 ),
                                 _ => Ok(vec![]),
                             },
-                            Err(e) => return Err(e),
+                            Err(e) => Err(e),
                         }
                     } else {
                         to_unresolved_result(
@@ -820,16 +796,13 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
             PathAwareValue::Map((_path, map)) => {
                 let mut selected = Vec::with_capacity(map.values.len());
                 let rhs = match &map_key_filter.compare_with {
-                    LetValue::AccessClause(acc_query) => {
-                        let values = query_retrieval_with_converter(
-                            0,
-                            &acc_query.query,
-                            current,
-                            resolver,
-                            converter,
-                        )?;
-                        values
-                    }
+                    LetValue::AccessClause(acc_query) => query_retrieval_with_converter(
+                        0,
+                        &acc_query.query,
+                        current,
+                        resolver,
+                        converter,
+                    )?,
 
                     LetValue::Value(path_value) => {
                         vec![QueryResult::Literal(path_value)]
@@ -841,7 +814,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 let lhs = map
                     .keys
                     .iter()
-                    .map(|p| QueryResult::Resolved(p))
+                    .map(QueryResult::Resolved)
                     .collect::<Vec<QueryResult<'_>>>();
 
                 let results = super::eval::real_binary_operation(
@@ -981,6 +954,7 @@ pub(crate) struct RecordTracker<'value> {
 }
 
 impl<'value> RecordTracker<'value> {
+    #[cfg(test)]
     pub(crate) fn new() -> RecordTracker<'value> {
         RecordTracker {
             events: vec![],
@@ -1005,7 +979,7 @@ impl<'value> RecordTracer<'value> for RecordTracker<'value> {
     fn end_record(&mut self, context: &str, record: RecordType<'value>) -> Result<()> {
         let matched = match self.events.pop() {
             Some(mut event) => {
-                if &event.context != context {
+                if event.context != context {
                     return Err(Error::IncompatibleError(format!(
                         "Event Record context start and end does not match {}",
                         context
@@ -1060,6 +1034,7 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
         self.scope.root
     }
 
+    #[allow(clippy::never_loop)]
     fn rule_status(&mut self, rule_name: &'value str) -> Result<Status> {
         if let Some(status) = self.rules_status.get(rule_name) {
             return Ok(*status);
@@ -1086,22 +1061,13 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
             break SKIP;
         };
 
-        // let status = super::eval::eval_rule(rule, self)?;
         self.rules_status.insert(rule_name, status);
         Ok(status)
-
-        //        self.rules.get(rule_name).map_or_else(
-        //            || Err(Error::new(ErrorKind::MissingValue(
-        //                format!("Rule {} by that name does not exist, Rule Names = {:?}",
-        //                        rule_name, self.rules.keys())
-        //            ))),
-        //            |rule| super::eval::eval_rule(*rule, self)
-        //        )
     }
 
     fn resolve_variable(&mut self, variable_name: &'value str) -> Result<Vec<QueryResult<'value>>> {
         if let Some(val) = self.scope.literals.get(variable_name) {
-            return Ok(vec![QueryResult::Literal(*val)]);
+            return Ok(vec![QueryResult::Literal(val)]);
         }
 
         if let Some(values) = self.scope.resolved_variables.get(variable_name) {
@@ -1132,7 +1098,7 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
         self.scope
             .resolved_variables
             .insert(variable_name, result.clone());
-        return Ok(result);
+        Ok(result)
     }
 
     fn add_variable_capture_key(
@@ -1224,7 +1190,7 @@ impl<'value, 'loc: 'value, 'eval> EvalContext<'value, 'loc> for BlockScope<'valu
 
     fn resolve_variable(&mut self, variable_name: &'value str) -> Result<Vec<QueryResult<'value>>> {
         if let Some(val) = self.scope.literals.get(variable_name) {
-            return Ok(vec![QueryResult::Literal(*val)]);
+            return Ok(vec![QueryResult::Literal(val)]);
         }
 
         if let Some(values) = self.scope.resolved_variables.get(variable_name) {
@@ -1250,7 +1216,8 @@ impl<'value, 'loc: 'value, 'eval> EvalContext<'value, 'loc> for BlockScope<'valu
         self.scope
             .resolved_variables
             .insert(variable_name, result.clone());
-        return Ok(result);
+
+        Ok(result)
     }
 
     fn add_variable_capture_key(
@@ -1439,70 +1406,6 @@ pub(crate) enum ClauseReport<'value> {
 }
 
 impl<'value> ClauseReport<'value> {
-    pub(crate) fn is_rule(&self) -> bool {
-        if let Self::Rule(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn is_block(&self) -> bool {
-        if let Self::Block(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn is_disjunctions(&self) -> bool {
-        if let Self::Disjunctions(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn is_clause(&self) -> bool {
-        if let Self::Clause(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn rule(&self) -> Option<&RuleReport> {
-        if let Self::Rule(rr) = self {
-            Some(rr)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn block(&self) -> Option<&GuardBlockReport> {
-        if let Self::Block(rr) = self {
-            Some(rr)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn disjunctions(&self) -> Option<&DisjunctionsReport> {
-        if let Self::Disjunctions(rr) = self {
-            Some(rr)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn clause(&self) -> Option<&GuardClauseReport> {
-        if let Self::Clause(gc) = self {
-            Some(gc)
-        } else {
-            None
-        }
-    }
-
     pub(crate) fn key(&self, parent: &str) -> String {
         match self {
             Self::Rule(RuleReport { name, .. }) => format!("{}/{}", parent, name),
@@ -1633,7 +1536,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                 message,
             })) => {
                 clauses.push(ClauseReport::Rule(RuleReport {
-                    name: *name,
+                    name,
                     checks: report_all_failed_clauses_for_rules(&current.children),
                     messages: Messages {
                         custom_message: message.clone(),
@@ -1696,7 +1599,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                 ClauseCheck::NoValueForEmptyCheck(msg) => {
                     let custom_message = msg
                         .as_ref()
-                        .map_or("".to_string(), |s| format!("{}", s.replace("\n", ";")));
+                        .map_or("".to_string(), |s| s.replace('\n', ";"));
 
                     let error_message = format!(
                         "Check was not compliant as variable in context [{}] was not empty",
@@ -1819,19 +1722,18 @@ fn report_all_failed_clauses_for_rules<'value>(
                                 "was not bool"
                             }
                         }
-                        IsFloat => {
+                        _ => {
                             if *not {
                                 "was float"
                             } else {
                                 "was not float"
                             }
                         }
-                        Eq | In | Gt | Lt | Le | Ge => unreachable!(),
                     };
 
                     let custom_message = custom_message
                         .as_ref()
-                        .map_or("".to_string(), |s| format!("{}", s.replace("\n", ";")));
+                        .map_or("".to_string(), |s| s.replace('\n', ";"));
 
                     let error_message = message
                         .as_ref()
@@ -1849,7 +1751,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     ),
                                     UnaryCheck::Resolved(UnaryComparison {
                                         comparison: (*cmp, *not),
-                                        value: *res,
+                                        value: res,
                                     })
                                 )
 
@@ -1893,7 +1795,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                 }) => {
                     let custom_message = custom_message
                         .as_ref()
-                        .map_or("".to_string(), |s| format!("{}", s.replace("\n", ";")));
+                        .map_or("".to_string(), |s| s.replace('\n', ";"));
 
                     let error_message = message
                         .as_ref()
@@ -1934,7 +1836,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                                 to=to_res,
                                                 op_msg=match cmp {
                                                     CmpOperator::Eq => if *not { "equal to" } else { "not equal to" },
-                                                    CmpOperator::Le => if *not { "less than equal to" } else { "less than equal to" },
+                                                    CmpOperator::Le => if *not { "less than equal to" } else { "not less than equal to" },
                                                     CmpOperator::Lt => if *not { "less than" } else { "not less than" },
                                                     CmpOperator::Ge => if *not { "greater than equal to" } else { "not greater than equal" },
                                                     CmpOperator::Gt => if *not { "greater than" } else { "not greater than" },
@@ -1946,7 +1848,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                         clauses.push(ClauseReport::Clause(
                                             GuardClauseReport::Binary(BinaryReport {
                                                 check: BinaryCheck::Resolved(BinaryComparison {
-                                                    to: *to_res,
+                                                    to: to_res,
                                                     from: res,
                                                     comparison: (*cmp, *not),
                                                 }),
@@ -2013,10 +1915,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                 ),
                                 to: to
                                     .iter()
-                                    .filter(|t| match t {
-                                        QueryResult::Resolved(_) => true,
-                                        _ => false,
-                                    })
+                                    .filter(|t| matches!(t, QueryResult::Resolved(_)))
                                     .map(|t| match t {
                                         QueryResult::Resolved(v) => v,
                                         QueryResult::UnResolved(ur) => ur.traversed_to,
@@ -2042,48 +1941,34 @@ pub(crate) fn simplifed_json_from_root<'value>(
     root: &EventRecord<'value>,
 ) -> Result<FileReport<'value>> {
     Ok(match &root.container {
-        Some(file_status) => match file_status {
-            RecordType::FileCheck(NamedStatus {
-                name,
-                status,
-                message,
-            }) => {
-                let mut pass = HashSet::with_capacity(root.children.len());
-                let mut skip = HashSet::with_capacity(root.children.len());
-                for each in &root.children {
-                    if let Some(rule) = &each.container {
-                        if let RecordType::RuleCheck(NamedStatus {
-                            status,
-                            message,
-                            name,
-                        }) = rule
-                        {
-                            match *status {
-                                Status::PASS => {
-                                    pass.insert(name.to_string());
-                                }
-                                Status::SKIP => {
-                                    skip.insert(name.to_string());
-                                }
-                                _ => {}
-                            }
+        Some(RecordType::FileCheck(NamedStatus { name, status, .. })) => {
+            let mut pass = HashSet::with_capacity(root.children.len());
+            let mut skip = HashSet::with_capacity(root.children.len());
+            for each in &root.children {
+                if let Some(RecordType::RuleCheck(NamedStatus { status, name, .. })) =
+                    &each.container
+                {
+                    match *status {
+                        Status::PASS => {
+                            pass.insert(name.to_string());
                         }
+                        SKIP => {
+                            skip.insert(name.to_string());
+                        }
+                        _ => {}
                     }
                 }
-                FileReport {
-                    status: *status,
-                    name: *name,
-                    not_compliant: report_all_failed_clauses_for_rules(&root.children),
-                    not_applicable: skip,
-                    compliant: pass,
-                    ..Default::default()
-                }
             }
-
-            _ => unreachable!(),
-        },
-
-        None => unreachable!(),
+            FileReport {
+                status: *status,
+                name,
+                not_compliant: report_all_failed_clauses_for_rules(&root.children),
+                not_applicable: skip,
+                compliant: pass,
+                ..Default::default()
+            }
+        }
+        _ => unreachable!(),
     })
 }
 

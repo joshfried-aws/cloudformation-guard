@@ -17,10 +17,6 @@ pub(crate) struct TfAware<'reporter> {
 }
 
 impl<'reporter> TfAware<'reporter> {
-    pub(crate) fn new() -> TfAware<'reporter> {
-        TfAware { next: None }
-    }
-
     pub(crate) fn new_with(next: &'reporter dyn Reporter) -> TfAware {
         TfAware { next: Some(next) }
     }
@@ -55,22 +51,20 @@ impl<'reporter> Reporter for TfAware<'reporter> {
     ) -> crate::rules::Result<()> {
         let root = data.root().unwrap();
         let is_tf_plan = match data.at("/resource_changes", root) {
-            Ok(_resource_changes) => match data.at("/terraform_version", root) {
-                Ok(_tf_version) => true,
-                _ => false,
-            },
+            Ok(_resource_changes) => matches!(data.at("/terraform_version", root), Ok(_tf_version)),
             _ => false,
         };
 
         if is_tf_plan {
             let failure_report = simplifed_json_from_root(root_record)?;
-            Ok(match output_type {
+            match output_type {
                 OutputFormatType::YAML => serde_yaml::to_writer(write, &failure_report)?,
                 OutputFormatType::JSON => serde_json::to_writer_pretty(write, &failure_report)?,
                 OutputFormatType::SingleLineSummary => {
                     single_line(write, data_file, rules_file, data, root, failure_report)?
                 }
-            })
+            };
+            Ok(())
         } else {
             self.next.map_or(Ok(()), |next| {
                 next.report_eval(
@@ -86,17 +80,6 @@ impl<'reporter> Reporter for TfAware<'reporter> {
             })
         }
     }
-}
-
-struct PropertyError<'report, 'value: 'report> {
-    property: &'value str,
-    clause: &'report ClauseReport<'value>,
-}
-
-struct ResourceView<'report, 'value: 'report> {
-    name: &'value str,
-    resource_type: &'value str,
-    errors: indexmap::IndexMap<&'value str, PropertyError<'report, 'value>>,
 }
 
 lazy_static! {
@@ -137,7 +120,7 @@ fn single_line(
 
     let mut by_resources = HashMap::new();
     for (key, value) in path_tree.range("/resource_changes/"..) {
-        let resource_ptr = match RESOURCE_CHANGE_EXTRACTION.captures(*key) {
+        let resource_ptr = match RESOURCE_CHANGE_EXTRACTION.captures(key) {
             Ok(Some(cap)) => cap.name("index_or_name").unwrap().as_str(),
             Ok(None) => unreachable!(),
             Err(e) => return Err(Error::from(e)),
@@ -154,7 +137,7 @@ fn single_line(
             },
             _ => unreachable!(),
         };
-        let dot_sep = addr.find(".").unwrap();
+        let dot_sep = addr.find('.').unwrap();
         let (resource_type, resource_name) = (addr.slice(0..dot_sep), addr.slice(dot_sep + 1..));
         let resource_aggr = by_resources
             .entry(resource_name)
@@ -241,7 +224,7 @@ fn single_line(
                             None => (resource_based, ""),
                         };
 
-                        let property = property.slice("change/after/".len()..).replace("/", ".");
+                        let property = property.slice("change/after/".len()..).replace('/', ".");
                         writeln!(
                             writer,
                             "{prefix}{pp:<width$}= {path}\n{prefix}{op:<width$}= {cmp}\n{prefix}{val:<width$}= {value}\n{prefix}{cw:<width$}= {with}",
@@ -261,10 +244,10 @@ fn single_line(
 
                     fn binary_error_in_msg(
                         &mut self,
-                        writer: &mut dyn Write,
-                        cr: &ClauseReport<'_>,
-                        bc: &InComparison<'_>,
-                        prefix: &str,
+                        _writer: &mut dyn Write,
+                        _cr: &ClauseReport<'_>,
+                        _bc: &InComparison<'_>,
+                        _prefix: &str,
                     ) -> crate::rules::Result<usize> {
                         todo!()
                     }
@@ -276,14 +259,14 @@ fn single_line(
                         re: &UnaryComparison<'_>,
                         prefix: &str,
                     ) -> crate::rules::Result<usize> {
-                        let width = "PropertyPath".len() + 4;
+                        let _width = "PropertyPath".len() + 4;
                         let resource_based = re.value.self_path().0.as_str();
                         let (_res, property) = match resource_based.find("changes/after/") {
                             Some(idx) => resource_based.split_at(idx),
                             None => (resource_based, ""),
                         };
 
-                        let property = property.replace("/", ".");
+                        let property = property.replace('/', ".");
                         let width = "PropertyPath".len() + 4;
                         writeln!(
                             writer,

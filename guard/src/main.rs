@@ -1,4 +1,3 @@
-use clap::ArgMatches;
 use std::collections::HashMap;
 use std::fs::File;
 mod command;
@@ -14,9 +13,7 @@ use crate::utils::writer::{WriteBuffer::File as WBFile, WriteBuffer::Stdout, Wri
 use command::Command;
 use commands::{APP_NAME, APP_VERSION};
 use rules::errors::Error;
-use std::io::Write;
 use std::process::exit;
-use std::rc::Rc;
 
 fn main() -> Result<(), Error> {
     let mut app = clap::Command::new(APP_NAME)

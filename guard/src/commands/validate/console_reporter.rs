@@ -34,7 +34,6 @@ fn pprint_failed_sub_tree(
             status: Status::FAIL,
             ..
         }))
-        | Some(RecordType::TypeBlock(Status::FAIL))
         | Some(RecordType::TypeCheck(TypeBlockCheck {
             block:
                 BlockCheck {
@@ -68,7 +67,7 @@ fn pprint_failed_sub_tree(
                 ClauseCheck::NoValueForEmptyCheck(msg) => {
                     let custom_message = msg
                         .as_ref()
-                        .map_or("".to_string(), |s| format!("{}", s.replace("\n", ";")));
+                        .map_or("".to_string(), |s| s.replace('\n', ";"));
 
                     writeln!(
                         writer,
@@ -162,7 +161,7 @@ fn pprint_failed_sub_tree(
                     };
 
                     let custom_message = custom_message.as_ref().map_or("".to_string(), |s| {
-                        format!(" Message = [{}]", s.replace("\n", ";"))
+                        format!(" Message = [{}]", s.replace('\n', ";"))
                     });
 
                     let error_message = message
@@ -208,7 +207,7 @@ fn pprint_failed_sub_tree(
                     to,
                 }) => {
                     let custom_message = custom_message.as_ref().map_or("".to_string(), |s| {
-                        format!(" Message = [{}]", s.replace("\n", ";"))
+                        format!(" Message = [{}]", s.replace('\n', ";"))
                     });
 
                     let error_message = message
@@ -263,7 +262,7 @@ fn pprint_failed_sub_tree(
                                 to=to_result.map_or("NULL".to_string(), |t| format!("{}", t)),
                                 op_msg=match cmp {
                                     CmpOperator::Eq => if *not { "equal to" } else { "not equal to" },
-                                    CmpOperator::Le => if *not { "less than equal to" } else { "less than equal to" },
+                                    CmpOperator::Le => if *not { "less than equal to" } else { "not less than equal to" },
                                     CmpOperator::Lt => if *not { "less than" } else { "not less than" },
                                     CmpOperator::Ge => if *not { "greater than equal to" } else { "not greater than equal" },
                                     CmpOperator::Gt => if *not { "greater than" } else { "not greater than" },

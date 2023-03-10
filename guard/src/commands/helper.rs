@@ -17,20 +17,21 @@ pub struct ValidateInput<'a> {
     pub file_name: &'a str,
 }
 
+#[allow(dead_code)]
 pub fn validate_and_return_json(
     data: ValidateInput,
     rules: ValidateInput,
     verbose: bool,
 ) -> Result<String> {
-    let input_data = match serde_json::from_str::<serde_json::Value>(&data.content) {
+    let input_data = match serde_json::from_str::<serde_json::Value>(data.content) {
         Ok(value) => PathAwareValue::try_from(value),
         Err(_) => {
-            let value = serde_yaml::from_str::<serde_yaml::Value>(&data.content)?;
+            let value = serde_yaml::from_str::<serde_yaml::Value>(data.content)?;
             PathAwareValue::try_from(value)
         }
     };
 
-    let span = crate::rules::parser::Span::new_extra(&rules.content, rules.file_name);
+    let span = crate::rules::parser::Span::new_extra(rules.content, rules.file_name);
 
     let rules_file_name = rules.file_name;
     match crate::rules::parser::rules_file(span) {
@@ -61,12 +62,12 @@ pub fn validate_and_return_json(
                 )?;
 
                 match String::from_utf8(write_output.buffer().to_vec()) {
-                    Ok(val) => return Ok(val),
-                    Err(e) => return Err(Error::ParseError(e.to_string())),
+                    Ok(val) => Ok(val),
+                    Err(e) => Err(Error::ParseError(e.to_string())),
                 }
             }
-            Err(e) => return Err(e),
+            Err(e) => Err(e),
         },
-        Err(e) => return Err(Error::ParseError(e.to_string())),
+        Err(e) => Err(Error::ParseError(e.to_string())),
     }
 }

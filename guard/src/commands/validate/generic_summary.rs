@@ -25,13 +25,13 @@ impl Reporter for GenericSummary {
     fn report(
         &self,
         writer: &mut dyn Write,
-        status: Option<Status>,
+        _status: Option<Status>,
         failed_rules: &[&StatusContext],
         passed_or_skipped: &[&StatusContext],
         longest_rule_name: usize,
         rules_file: &str,
         data_file: &str,
-        data: &Traversal<'_>,
+        _data: &Traversal<'_>,
         output_format_type: OutputFormatType,
     ) -> crate::rules::Result<()> {
         let renderer =
@@ -81,10 +81,7 @@ impl Reporter for GenericSummary {
             HashMap::new()
         };
 
-        let as_vec = passed_or_skipped
-            .iter()
-            .map(|s| *s)
-            .collect::<Vec<&StatusContext>>();
+        let as_vec = passed_or_skipped.to_vec();
         let (skipped, passed): (Vec<&StatusContext>, Vec<&StatusContext>) =
             as_vec.iter().partition(|status| match status.status {
                 // This uses the dereference deep trait of Rust
@@ -132,7 +129,7 @@ impl Reporter for GenericSummary {
                 OutputFormatType::YAML => Box::new(StructuredSummary::new(StructureType::YAML))
                     as Box<dyn GenericReporter>,
             };
-        super::common::report_from_events(
+        report_from_events(
             _root_record,
             _write,
             _data_file,
@@ -172,7 +169,7 @@ fn unary_error_message(
         data=data_file,
         rules=rules_file,
         rule=info.rule,
-        msg=info.message.replace("\n", ";"),
+        msg=info.message.replace('\n', ";"),
     ))
 }
 
@@ -195,7 +192,7 @@ fn binary_error_message(
         data = data_file,
         rules = rules_file,
         rule = info.rule,
-        msg = info.message.replace("\n", ";"),
+        msg = info.message.replace('\n', ";"),
         expected = info
             .expected
             .as_ref()
@@ -219,7 +216,7 @@ impl GenericReporter for SingleLineSummary {
         failed: HashMap<String, Vec<NameInfo<'_>>>,
         passed: HashSet<String>,
         skipped: HashSet<String>,
-        longest_rule_len: usize,
+        _longest_rule_len: usize,
     ) -> crate::rules::Result<()> {
         writeln!(
             writer,
@@ -230,10 +227,9 @@ impl GenericReporter for SingleLineSummary {
             writeln!(writer, "--")?;
         }
         for (_rule, clauses) in failed {
-            super::common::print_name_info(
+            print_name_info(
                 writer,
                 &clauses,
-                longest_rule_len,
                 rules_file_name,
                 data_file_name,
                 retrieval_error_message,
@@ -241,13 +237,7 @@ impl GenericReporter for SingleLineSummary {
                 binary_error_message,
             )?;
         }
-        super::common::print_compliant_skipped_info(
-            writer,
-            &passed,
-            &skipped,
-            rules_file_name,
-            data_file_name,
-        )?;
+        print_compliant_skipped_info(writer, &passed, &skipped, rules_file_name, data_file_name)?;
         writeln!(writer, "--")?;
         Ok(())
     }

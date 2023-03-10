@@ -59,10 +59,14 @@ is_type_fn!(is_string_operation, PathAwareValue::String(_));
 is_type_fn!(is_list_operation, PathAwareValue::List(_));
 is_type_fn!(is_struct_operation, PathAwareValue::Map(_));
 is_type_fn!(is_int_operation, PathAwareValue::Int(_));
+#[cfg(test)]
 is_type_fn!(is_float_operation, PathAwareValue::Float(_));
 is_type_fn!(is_bool_operation, PathAwareValue::Bool(_));
+#[cfg(test)]
 is_type_fn!(is_char_range_operation, PathAwareValue::RangeChar(_));
+#[cfg(test)]
 is_type_fn!(is_int_range_operation, PathAwareValue::RangeInt(_));
+#[cfg(test)]
 is_type_fn!(is_float_range_operation, PathAwareValue::RangeFloat(_));
 
 fn not_operation<O>(operation: O) -> impl Fn(&QueryResult<'_>) -> Result<bool>
@@ -89,13 +93,16 @@ where
     }
 }
 
+type RecordClassUnaryClause<'value, 'eval> =
+    Box<dyn FnMut(&QueryResult<'value>) -> Result<bool> + 'eval>;
+
 fn record_unary_clause<'eval, 'value, 'loc: 'value, O>(
     operation: O,
     cmp: (CmpOperator, bool),
     context: String,
     custom_message: Option<String>,
     eval_context: &'eval mut dyn EvalContext<'value, 'loc>,
-) -> Box<dyn FnMut(&QueryResult<'value>) -> Result<bool> + 'eval>
+) -> RecordClassUnaryClause<'value, 'eval>
 where
     O: Fn(&QueryResult<'value>) -> Result<bool> + 'eval,
 {
@@ -127,7 +134,7 @@ where
 
             Err(e) => {
                 check.status = Status::FAIL;
-                check.message = Some(format!("{}", e));
+                check.message = Some(format!("{e}"));
                 eval_context.end_record(
                     &context,
                     RecordType::ClauseValueCheck(ClauseCheck::Unary(UnaryValueCheck {
@@ -190,7 +197,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
         rest => rest.is_variable() && lhs_query.len() == 1,
     };
 
-    if empty_on_expr && cmp.0 == CmpOperator::Empty {
+    if empty_on_expr && cmp.0 == Empty {
         return Ok({
             if !lhs.is_empty() {
                 let mut results = Vec::with_capacity(lhs.len());
@@ -265,7 +272,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
                 EvaluationResult::QueryValueResult(results)
             } else {
                 EvaluationResult::EmptyQueryResult({
-                    let result = if cmp.1 { false } else { true };
+                    let result = !cmp.1;
                     let result = if inverse { !result } else { result };
                     match result {
                         true => {
@@ -281,7 +288,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
                             eval_context.end_record(
                                 &context,
                                 RecordType::ClauseValueCheck(ClauseCheck::NoValueForEmptyCheck(
-                                    custom_message.clone(),
+                                    custom_message,
                                 )),
                             )?;
                             Status::FAIL
@@ -300,8 +307,10 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
     }
 
     use CmpOperator::*;
+
+    #[allow(clippy::type_complexity)]
     let mut operation: Box<dyn FnMut(&QueryResult<'l>) -> Result<bool>> = match cmp {
-        (CmpOperator::Exists, not_exists) => box_create_func!(
+        (Exists, not_exists) => box_create_func!(
             exists_operation,
             not_exists,
             inverse,
@@ -310,7 +319,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
             context,
             custom_message
         ),
-        (CmpOperator::Empty, not_empty) => box_create_func!(
+        (Empty, not_empty) => box_create_func!(
             element_empty_operation,
             not_empty,
             inverse,
@@ -319,7 +328,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
             context,
             custom_message
         ),
-        (CmpOperator::IsString, is_not_string) => box_create_func!(
+        (IsString, is_not_string) => box_create_func!(
             is_string_operation,
             is_not_string,
             inverse,
@@ -328,7 +337,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
             context,
             custom_message
         ),
-        (CmpOperator::IsMap, is_not_map) => box_create_func!(
+        (IsMap, is_not_map) => box_create_func!(
             is_struct_operation,
             is_not_map,
             inverse,
@@ -337,7 +346,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
             context,
             custom_message
         ),
-        (CmpOperator::IsList, is_not_list) => box_create_func!(
+        (IsList, is_not_list) => box_create_func!(
             is_list_operation,
             is_not_list,
             inverse,
@@ -346,7 +355,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
             context,
             custom_message
         ),
-        (CmpOperator::IsBool, is_not_bool) => box_create_func!(
+        (IsBool, is_not_bool) => box_create_func!(
             is_bool_operation,
             is_not_bool,
             inverse,
@@ -355,7 +364,7 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
             context,
             custom_message
         ),
-        (CmpOperator::IsInt, is_not_int) => box_create_func!(
+        (IsInt, is_not_int) => box_create_func!(
             is_int_operation,
             is_not_int,
             inverse,
@@ -397,6 +406,7 @@ struct ComparisonWithRhs<'r> {
     pair: LhsRhsPair<'r>,
 }
 
+#[allow(dead_code)]
 struct NotComparableWithRhs<'r> {
     reason: String,
     pair: LhsRhsPair<'r>,
@@ -419,13 +429,13 @@ where
     for each_rhs in rhs {
         match each_rhs {
             QueryResult::Literal(each_rhs_resolved) | QueryResult::Resolved(each_rhs_resolved) => {
-                match cmp(lhs, *each_rhs_resolved) {
+                match cmp(lhs, each_rhs_resolved) {
                     Ok(outcome) => {
                         statues.push(ComparisonResult::Comparable(ComparisonWithRhs {
                             outcome,
                             pair: LhsRhsPair {
                                 lhs,
-                                rhs: *each_rhs_resolved,
+                                rhs: each_rhs_resolved,
                             },
                         }));
                     }
@@ -435,14 +445,14 @@ where
                             // && each_rhs_resolved.is_scalar() {
                             if let PathAwareValue::List((_, inner)) = lhs {
                                 for each in inner {
-                                    match cmp(each, *each_rhs_resolved) {
+                                    match cmp(each, each_rhs_resolved) {
                                         Ok(outcome) => {
                                             statues.push(ComparisonResult::Comparable(
                                                 ComparisonWithRhs {
                                                     outcome,
                                                     pair: LhsRhsPair {
                                                         lhs: each,
-                                                        rhs: *each_rhs_resolved,
+                                                        rhs: each_rhs_resolved,
                                                     },
                                                 },
                                             ));
@@ -454,7 +464,7 @@ where
                                                     reason,
                                                     pair: LhsRhsPair {
                                                         lhs: each,
-                                                        rhs: *each_rhs_resolved,
+                                                        rhs: each_rhs_resolved,
                                                     },
                                                 },
                                             ));
@@ -509,7 +519,7 @@ where
                             reason,
                             pair: LhsRhsPair {
                                 lhs,
-                                rhs: *each_rhs_resolved,
+                                rhs: each_rhs_resolved,
                             },
                         }));
                     }
@@ -529,18 +539,6 @@ where
     Ok(statues)
 }
 
-fn not_cmp<F>(cmp: F) -> impl Fn(&PathAwareValue, &PathAwareValue) -> Result<bool>
-where
-    F: Fn(&PathAwareValue, &PathAwareValue) -> Result<bool>,
-{
-    move |left, right| {
-        Ok(match cmp(left, right)? {
-            true => false,
-            false => true,
-        })
-    }
-}
-
 fn in_cmp(not_in: bool) -> impl Fn(&PathAwareValue, &PathAwareValue) -> Result<bool> {
     move |lhs, rhs| match (lhs, rhs) {
         (PathAwareValue::String((_, lhs_value)), PathAwareValue::String((_, rhs_value))) => {
@@ -554,20 +552,8 @@ fn in_cmp(not_in: bool) -> impl Fn(&PathAwareValue, &PathAwareValue) -> Result<b
                 tracking.push(compare_eq(lhs, each_rhs)?);
             }
             match tracking.iter().find(|s| **s) {
-                Some(_) => {
-                    if not_in {
-                        false
-                    } else {
-                        true
-                    }
-                }
-                None => {
-                    if not_in {
-                        true
-                    } else {
-                        false
-                    }
-                }
+                Some(_) => !not_in,
+                None => not_in,
             }
         }),
 
@@ -611,12 +597,12 @@ fn report_value<'r, 'value: 'r, 'loc: 'value>(
         }
         //},
         ComparisonResult::NotComparable(NotComparableWithRhs {
-            reason,
             pair:
                 LhsRhsPair {
                     rhs: rhs_value,
                     lhs: lhs_value,
                 },
+            ..
         }) =>
         //            if is_lhs_rhs_swapped {
         //                (QueryResult::Resolved(rhs_value),
@@ -667,7 +653,7 @@ fn report_value<'r, 'value: 'r, 'loc: 'value>(
                 from: lhs_value.clone(),
                 comparison: cmp,
                 to: rhs_value,
-                custom_message: custom_message.clone(),
+                custom_message,
                 message: reason,
                 status: Status::FAIL,
             })),
@@ -714,7 +700,7 @@ fn report_at_least_one<'r, 'value: 'r, 'loc: 'value>(
                 by_lhs_value
                     .entry(*lhs)
                     .or_insert(vec![])
-                    .push((each, QueryResult::Resolved(*rhs)));
+                    .push((each, QueryResult::Resolved(rhs)));
             }
 
             ComparisonResult::NotComparable(NotComparableWithRhs {
@@ -724,11 +710,11 @@ fn report_at_least_one<'r, 'value: 'r, 'loc: 'value>(
                 by_lhs_value
                     .entry(*lhs)
                     .or_insert(vec![])
-                    .push((each, QueryResult::Resolved(*rhs)));
+                    .push((each, QueryResult::Resolved(rhs)));
             }
 
             ComparisonResult::UnResolvedRhs(UnResolvedRhs { rhs, lhs }) => {
-                if let QueryResult::UnResolved(ur) = rhs {
+                if let QueryResult::UnResolved(_) = rhs {
                     by_lhs_value
                         .entry(*lhs)
                         .or_insert(vec![])
@@ -739,27 +725,29 @@ fn report_at_least_one<'r, 'value: 'r, 'loc: 'value>(
     }
 
     for (lhs, results) in by_lhs_value.iter() {
-        let found = results.iter().find(|(r, _rhs)| match r {
-            ComparisonResult::Comparable(ComparisonWithRhs { outcome: true, .. }) => true,
-            _ => false,
+        let found = results.iter().find(|(r, _rhs)| {
+            matches!(
+                r,
+                ComparisonResult::Comparable(ComparisonWithRhs { outcome: true, .. })
+            )
         });
         match found {
             Some(_) => {
                 eval_context.start_record(&context)?;
                 eval_context
                     .end_record(&context, RecordType::ClauseValueCheck(ClauseCheck::Success))?;
-                statues.push((QueryResult::Resolved(*lhs), Status::PASS))
+                statues.push((QueryResult::Resolved(lhs), Status::PASS))
             }
             None => {
                 eval_context.start_record(&context)?;
                 let to_collected = results
                     .iter()
-                    .map(|(cr, rhs)| rhs.clone())
+                    .map(|(_cr, rhs)| rhs.clone())
                     .collect::<Vec<QueryResult<'_>>>();
                 eval_context.end_record(
                     &context,
                     RecordType::ClauseValueCheck(ClauseCheck::InComparison(InComparisonCheck {
-                        from: QueryResult::Resolved(*lhs),
+                        from: QueryResult::Resolved(lhs),
                         to: to_collected,
                         message: None,
                         custom_message: custom_message.clone(),
@@ -767,7 +755,7 @@ fn report_at_least_one<'r, 'value: 'r, 'loc: 'value>(
                         comparison: cmp,
                     })),
                 )?;
-                statues.push((QueryResult::Resolved(*lhs), Status::FAIL))
+                statues.push((QueryResult::Resolved(lhs), Status::FAIL))
             }
         }
     }
@@ -961,7 +949,7 @@ fn binary_operation<'value, 'loc: 'value>(
                             let rhs = qin
                                 .rhs
                                 .iter()
-                                .map(|e| QueryResult::Resolved(*e))
+                                .map(|e| QueryResult::Resolved(e))
                                 .collect::<Vec<_>>();
                             for lhs in qin.diff {
                                 eval_context.start_record(&context)?;
@@ -1012,13 +1000,12 @@ pub(super) fn real_binary_operation<'value, 'loc: 'value>(
     eval_context: &mut dyn EvalContext<'value, 'loc>,
 ) -> Result<EvaluationResult<'value>> {
     let mut statues: Vec<(QueryResult<'_>, Status)> = Vec::with_capacity(lhs.len());
-    let original = cmp;
     let cmp = if cmp.0 == CmpOperator::Eq && rhs.len() > 1 {
         (CmpOperator::In, cmp.1)
     } else {
         cmp
     };
-    for (idx, each) in lhs.iter().enumerate() {
+    for (_, each) in lhs.iter().enumerate() {
         match each {
             QueryResult::UnResolved(_ur) => {
                 eval_context.start_record(&context)?;
@@ -1038,37 +1025,27 @@ pub(super) fn real_binary_operation<'value, 'loc: 'value>(
 
             QueryResult::Literal(l) | QueryResult::Resolved(l) => {
                 let r = match cmp {
-                    (CmpOperator::Eq, is_not) => each_lhs_compare(
-                        not_compare(crate::rules::path_value::compare_eq, is_not),
-                        *l,
-                        rhs,
-                    )?,
+                    (CmpOperator::Eq, is_not) => {
+                        each_lhs_compare(not_compare(compare_eq, is_not), l, rhs)?
+                    }
 
-                    (CmpOperator::Ge, is_not) => each_lhs_compare(
-                        not_compare(crate::rules::path_value::compare_ge, is_not),
-                        *l,
-                        rhs,
-                    )?,
+                    (CmpOperator::Ge, is_not) => {
+                        each_lhs_compare(not_compare(path_value::compare_ge, is_not), l, rhs)?
+                    }
 
-                    (CmpOperator::Gt, is_not) => each_lhs_compare(
-                        not_compare(crate::rules::path_value::compare_gt, is_not),
-                        *l,
-                        rhs,
-                    )?,
+                    (CmpOperator::Gt, is_not) => {
+                        each_lhs_compare(not_compare(path_value::compare_gt, is_not), l, rhs)?
+                    }
 
-                    (CmpOperator::Lt, is_not) => each_lhs_compare(
-                        not_compare(crate::rules::path_value::compare_lt, is_not),
-                        *l,
-                        rhs,
-                    )?,
+                    (CmpOperator::Lt, is_not) => {
+                        each_lhs_compare(not_compare(path_value::compare_lt, is_not), l, rhs)?
+                    }
 
-                    (CmpOperator::Le, is_not) => each_lhs_compare(
-                        not_compare(crate::rules::path_value::compare_le, is_not),
-                        *l,
-                        rhs,
-                    )?,
+                    (CmpOperator::Le, is_not) => {
+                        each_lhs_compare(not_compare(path_value::compare_le, is_not), l, rhs)?
+                    }
 
-                    (CmpOperator::In, is_not) => each_lhs_compare(in_cmp(is_not), *l, rhs)?,
+                    (CmpOperator::In, is_not) => each_lhs_compare(in_cmp(is_not), l, rhs)?,
 
                     _ => unreachable!(),
                 };
@@ -1101,6 +1078,7 @@ pub(super) fn real_binary_operation<'value, 'loc: 'value>(
     Ok(EvaluationResult::QueryValueResult(statues))
 }
 
+#[allow(clippy::never_loop)]
 pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
     gac: &'value GuardAccessClause<'loc>,
     resolver: &mut dyn EvalContext<'value, 'loc>,
@@ -1119,10 +1097,10 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
             resolver,
         )
     } else {
-        let (rhs, is_literal) = match &gac.access_clause.compare_with {
+        let (rhs, ..) = match &gac.access_clause.compare_with {
             Some(val) => match val {
                 LetValue::Value(rhs_val) => (vec![QueryResult::Literal(rhs_val)], true),
-                LetValue::AccessClause(acc_querty) => match resolver.query(&acc_querty.query) {
+                LetValue::AccessClause(acc_query) => match resolver.query(&acc_query.query) {
                     Ok(result) => (result, false),
                     Err(e) => {
                         resolver.end_record(
@@ -1145,9 +1123,10 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
                     RecordType::GuardClauseBlockCheck(BlockCheck {
                         status: Status::FAIL,
                         at_least_one_matches: !all,
-                        message: Some(format!(
+                        message: Some(
                             "Error not RHS for binary clause when handling clause, bailing"
-                        )),
+                                .to_string(),
+                        ),
                     }),
                 )?;
                 return Err(Error::NotComparable(format!(
@@ -1224,10 +1203,10 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
                 RecordType::GuardClauseBlockCheck(BlockCheck {
                     status: Status::FAIL,
                     at_least_one_matches: !all,
-                    message: Some(format!("Error {} when handling clause, bailing", e)),
+                    message: Some(format!("Error {e} when handling clause, bailing")),
                 }),
             )?;
-            return Err(e);
+            Err(e)
         }
     }
 }
@@ -1287,7 +1266,7 @@ pub(in crate::rules) fn eval_guard_named_clause<'value, 'loc: 'value>(
                 RecordType::ClauseValueCheck(ClauseCheck::DependentRule(MissingValueCheck {
                     rule: &gnc.dependent_rule,
                     status: Status::FAIL,
-                    message: Some(format!("{} failed due to error {}", context, e)),
+                    message: Some(format!("{context} failed due to error {e}")),
                     custom_message: gnc.custom_message.clone(),
                 })),
             )?;
@@ -1395,8 +1374,7 @@ pub(in crate::rules) fn eval_guard_block_clause<'value, 'loc: 'value>(
                                 status: Status::FAIL,
                                 at_least_one_matches: !match_all,
                                 message: Some(format!(
-                                    "Error {} when handling block clause, bailing",
-                                    e
+                                    "Error {e} when handling block clause, bailing",
                                 )),
                             }),
                         )?;
@@ -1415,14 +1393,12 @@ pub(in crate::rules) fn eval_guard_block_clause<'value, 'loc: 'value>(
         } else {
             Status::SKIP
         }
+    } else if passes > 0 {
+        Status::PASS
+    } else if fails > 0 {
+        Status::FAIL
     } else {
-        if passes > 0 {
-            Status::PASS
-        } else if fails > 0 {
-            Status::FAIL
-        } else {
-            Status::SKIP
-        }
+        Status::SKIP
     };
     resolver.end_record(
         &context,
@@ -1469,8 +1445,7 @@ fn eval_when_condition_block<'value, 'loc: 'value>(
                 RecordType::WhenCheck(BlockCheck {
                     status: Status::FAIL,
                     message: Some(format!(
-                        "Error {} during type condition evaluation, bailing",
-                        e
+                        "Error {e} during type condition evaluation, bailing",
                     )),
                     at_least_one_matches: false,
                 }),
@@ -1499,8 +1474,7 @@ fn eval_when_condition_block<'value, 'loc: 'value>(
                     RecordType::WhenCheck(BlockCheck {
                         status: Status::FAIL,
                         message: Some(format!(
-                            "Error {} during type condition evaluation, bailing",
-                            e
+                            "Error {e} during type condition evaluation, bailing",
                         )),
                         at_least_one_matches: false,
                     }),
@@ -1565,7 +1539,7 @@ impl<'eval, 'value, 'loc: 'value> RecordTracer<'value>
     fn end_record(&mut self, context: &str, record: RecordType<'value>) -> Result<()> {
         let record = match record {
             RecordType::RuleCheck(ns) => {
-                if ns.name == &self.call_rule.named_rule.dependent_rule {
+                if ns.name == self.call_rule.named_rule.dependent_rule {
                     RecordType::RuleCheck(NamedStatus {
                         name: ns.name,
                         status: ns.status,
@@ -1600,16 +1574,14 @@ pub(in crate::rules) fn eval_parameterized_rule_call<'value, 'loc: 'value>(
     for (idx, each) in call_rule.parameters.iter().enumerate() {
         match each {
             LetValue::Value(val) => {
-                //resolved_parameters.insert((&param_rule.parameter_names[idx]).as_str(), vec![QueryResult::Resolved(val)]);
                 resolved_parameters.insert(
-                    (&param_rule.parameter_names[idx]).as_str(),
+                    param_rule.parameter_names[idx].as_str(),
                     vec![QueryResult::Resolved(val)],
                 );
             }
             LetValue::AccessClause(query) => {
                 resolved_parameters.insert(
-                    // (&param_rule.parameter_names[idx]).as_ref(),
-                    (&param_rule.parameter_names[idx]).as_str(),
+                    param_rule.parameter_names[idx].as_str(),
                     resolver.query(&query.query)?,
                 );
             }
@@ -1638,7 +1610,7 @@ pub(in crate::rules) fn eval_guard_clause<'value, 'loc: 'value>(
             block,
             resolver,
         ),
-        GuardClause::ParameterizedNamedRule(prc) => eval_parameterized_rule_call(&prc, resolver),
+        GuardClause::ParameterizedNamedRule(prc) => eval_parameterized_rule_call(prc, resolver),
     }
 }
 
@@ -1649,9 +1621,7 @@ pub(in crate::rules) fn eval_when_clause<'value, 'loc: 'value>(
     match when_clause {
         WhenGuardClause::Clause(gac) => eval_guard_access_clause(gac, resolver),
         WhenGuardClause::NamedRule(gnr) => eval_guard_named_clause(gnr, resolver),
-        WhenGuardClause::ParameterizedNamedRule(prc) => {
-            eval_parameterized_rule_call(&prc, resolver)
-        }
+        WhenGuardClause::ParameterizedNamedRule(prc) => eval_parameterized_rule_call(prc, resolver),
     }
 }
 
@@ -1694,8 +1664,7 @@ pub(in crate::rules) fn eval_type_block_clause<'value, 'loc: 'value>(
                         block: BlockCheck {
                             status: Status::FAIL,
                             message: Some(format!(
-                                "Error {} during type condition evaluation, bailing",
-                                e
+                                "Error {e} during type condition evaluation, bailing",
                             )),
                             at_least_one_matches: false,
                         },
@@ -1748,7 +1717,7 @@ pub(in crate::rules) fn eval_type_block_clause<'value, 'loc: 'value>(
                 let block_context = format!("{}/{}", context, idx);
                 resolver.start_record(&block_context)?;
                 let mut val_resolver = ValueScope {
-                    root: *rv,
+                    root: rv,
                     parent: resolver,
                 };
                 match eval_general_block_clause(block, &mut val_resolver, eval_guard_clause) {
@@ -1774,8 +1743,7 @@ pub(in crate::rules) fn eval_type_block_clause<'value, 'loc: 'value>(
                                 block: BlockCheck {
                                     status: Status::FAIL,
                                     message: Some(format!(
-                                        "Error {} during type block evaluation, bailing",
-                                        e
+                                        "Error {e} during type block evaluation, bailing",
                                     )),
                                     at_least_one_matches: false,
                                 },
@@ -1829,7 +1797,7 @@ pub(in crate::rules) fn eval_rule<'value, 'loc: 'value>(
     rule: &'value Rule<'loc>,
     resolver: &mut dyn EvalContext<'value, 'loc>,
 ) -> Result<Status> {
-    let context = format!("{}", rule.rule_name);
+    let context = rule.rule_name.to_string();
     resolver.start_record(&context)?;
     let block = if let Some(conditions) = &rule.conditions {
         let when_context = format!("Rule#{}/When", context);
@@ -1891,7 +1859,7 @@ pub(in crate::rules) fn eval_rule<'value, 'loc: 'value>(
                     ..Default::default()
                 }),
             )?;
-            return Err(e);
+            Err(e)
         }
     }
 }
@@ -1956,6 +1924,7 @@ pub(crate) fn eval_rules_file<'value, 'loc: 'value>(
     Ok(overall)
 }
 
+#[allow(clippy::never_loop)]
 pub(in crate::rules) fn eval_conjunction_clauses<'value, 'loc: 'value, T, E>(
     conjunctions: &'value Conjunctions<T>,
     resolver: &mut dyn EvalContext<'value, 'loc>,
@@ -2003,8 +1972,7 @@ where
                                 &context,
                                 RecordType::Disjunction(BlockCheck {
                                     message: Some(format!(
-                                        "Disjunction failed due to error {}, bailing",
-                                        e
+                                        "Disjunction failed due to error {e}, bailing",
                                     )),
                                     status: Status::FAIL,
                                     at_least_one_matches: true,

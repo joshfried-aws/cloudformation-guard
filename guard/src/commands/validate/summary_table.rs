@@ -13,6 +13,7 @@ use std::io::Write;
 #[bitflags]
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, Eq, PartialOrd, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub(super) enum SummaryType {
     PASS = 0b0001,
     FAIL = 0b0010,
@@ -26,10 +27,10 @@ pub(super) struct SummaryTable<'reporter> {
 }
 
 impl<'a> SummaryTable<'a> {
-    pub(crate) fn new<'r>(
+    pub(crate) fn new(
         summary_type: BitFlags<SummaryType>,
-        next: &'r dyn Reporter,
-    ) -> SummaryTable<'r> {
+        next: &'a dyn Reporter,
+    ) -> SummaryTable<'a> {
         SummaryTable { summary_type, next }
     }
 }
@@ -47,7 +48,7 @@ fn print_partition(
             longest + 4,
             filename = rules_file_name,
             context = container.context,
-            status = super::common::colored_string(container.status)
+            status = colored_string(container.status)
         )?;
     }
     Ok(())
@@ -66,7 +67,7 @@ fn print_summary(
             longest + 4,
             filename = rules_file_name,
             context = rule_name,
-            status = super::common::colored_string(Some(*status))
+            status = colored_string(Some(*status))
         )?;
     }
     Ok(())
@@ -85,7 +86,7 @@ impl<'r> Reporter for SummaryTable<'r> {
         _data: &Traversal<'_>,
         _output_format_type: OutputFormatType,
     ) -> crate::rules::Result<()> {
-        let as_vec = passed_or_skipped.iter().map(|s| *s).collect_vec();
+        let as_vec = passed_or_skipped.iter().copied().collect_vec();
         let (skipped, passed): (Vec<&StatusContext>, Vec<&StatusContext>) =
             as_vec.iter().partition(|status| match status.status {
                 // This uses the dereference deep trait of Rust

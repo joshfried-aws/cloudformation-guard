@@ -3,8 +3,7 @@ use std::io::{stderr, stdout};
 
 use crate::utils::writer::Writer;
 use grep_searcher::SearcherBuilder;
-use indoc::{formatdoc, indoc};
-use rstest::rstest;
+use indoc::formatdoc;
 
 use crate::rules::eval_context::eval_context_tests::BasicQueryTesting;
 use crate::rules::eval_context::{root_scope, EventRecord, RecordTracker};

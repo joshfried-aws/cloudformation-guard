@@ -3,6 +3,7 @@ use crate::rules::path_value::*;
 use crate::rules::{CmpOperator, QueryResult, UnResolved};
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) enum UnaryResult<'r> {
     Success,
     Fail,
@@ -73,6 +74,7 @@ pub(crate) enum ComparisonResult<'r> {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) enum ValueEvalResult<'value> {
     LhsUnresolved(UnResolved<'value>),
     UnaryResult(UnaryResult<'value>),
@@ -80,17 +82,6 @@ pub(crate) enum ValueEvalResult<'value> {
 }
 
 impl<'value> ValueEvalResult<'value> {
-    pub(crate) fn success<C>(self, c: C) -> ValueEvalResult<'value>
-    where
-        C: FnOnce(ValueEvalResult<'value>) -> ValueEvalResult<'value>,
-    {
-        if let ValueEvalResult::ComparisonResult(ComparisonResult::Success(_)) = &self {
-            c(self)
-        } else {
-            self
-        }
-    }
-
     pub(crate) fn fail<C>(self, c: C) -> ValueEvalResult<'value>
     where
         C: FnOnce(ValueEvalResult<'value>) -> ValueEvalResult<'value>,
@@ -115,18 +106,18 @@ pub(crate) struct NotComparable<'r> {
     pub(crate) pair: LhsRhsPair<'r>,
 }
 
-pub(super) fn resolved<'value, E, R>(
-    qr: &QueryResult<'value>,
-    err: E,
-) -> std::result::Result<&'value PathAwareValue, R>
-where
-    E: Fn(UnResolved<'value>) -> R,
-{
-    match qr {
-        QueryResult::Resolved(r) | QueryResult::Literal(r) => Ok(*r),
-        QueryResult::UnResolved(ur) => Err(err(ur.clone())),
-    }
-}
+// pub(super) fn resolved<'value, E, R>(
+//     qr: &QueryResult<'value>,
+//     err: E,
+// ) -> Result<&'value PathAwareValue, R>
+// where
+//     E: Fn(UnResolved<'value>) -> R,
+// {
+//     match qr {
+//         QueryResult::Resolved(r) | QueryResult::Literal(r) => Ok(*r),
+//         QueryResult::UnResolved(ur) => Err(err(ur.clone())),
+//     }
+// }
 
 pub(crate) trait Comparator {
     fn compare<'value>(
@@ -156,13 +147,13 @@ fn selected<'value, U, R>(
     mut r: R,
 ) -> Vec<&'value PathAwareValue>
 where
-    U: FnMut(&UnResolved<'value>) -> (),
-    R: FnMut(&mut Vec<&'value PathAwareValue>, &'value PathAwareValue) -> (),
+    U: FnMut(&UnResolved<'value>),
+    R: FnMut(&mut Vec<&'value PathAwareValue>, &'value PathAwareValue),
 {
     let mut aggregated = Vec::with_capacity(query_results.len());
     for each in query_results {
         match each {
-            QueryResult::Literal(l) | QueryResult::Resolved(l) => r(&mut aggregated, *l),
+            QueryResult::Literal(l) | QueryResult::Resolved(l) => r(&mut aggregated, l),
             QueryResult::UnResolved(ur) => c(ur),
         }
     }
@@ -171,7 +162,7 @@ where
 
 fn flattened<'value, U>(query_results: &[QueryResult<'value>], c: U) -> Vec<&'value PathAwareValue>
 where
-    U: FnMut(&UnResolved<'value>) -> (),
+    U: FnMut(&UnResolved<'value>),
 {
     selected(query_results, c, |into, p| match p {
         PathAwareValue::List((_, list)) => {
@@ -194,7 +185,7 @@ impl Comparator for CommonOperator {
         });
         let rhs_flattened = flattened(rhs, |ur| {
             results.extend(lhs_flattened.iter().map(|lhs| {
-                ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(ur.clone(), *lhs))
+                ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(ur.clone(), lhs))
             }))
         });
         let rhs = &rhs_flattened;
@@ -301,7 +292,7 @@ fn contained_in<'value>(
     match lhs_value {
         PathAwareValue::List((_, lhsl)) => match rhs_value {
             PathAwareValue::List((_, rhsl)) => {
-                if rhsl.len() > 0 && rhsl[0].is_list() {
+                if !rhsl.is_empty() && rhsl[0].is_list() {
                     if rhsl.contains(lhs_value) {
                         ValueEvalResult::ComparisonResult(ComparisonResult::Success(
                             Compare::ListIn(ListIn::new(vec![], lhs_value, rhs_value)),
@@ -383,31 +374,29 @@ impl Comparator for InOperation {
                 if rhs.iter().any(|elem| elem.is_list()) {
                     rhs.into_iter()
                         .for_each(|r| results.push(contained_in(l, r)));
-                } else {
-                    if let PathAwareValue::List((_, list)) = l {
-                        let diff: Vec<&PathAwareValue> =
-                            list.iter().filter(|elem| !rhs.contains(&elem)).collect();
-                        if diff.is_empty() {
-                            results.push(ValueEvalResult::ComparisonResult(
-                                ComparisonResult::Success(Compare::QueryIn(QueryIn {
-                                    diff,
-                                    rhs,
-                                    lhs: vec![l],
-                                })),
-                            ));
-                        } else {
-                            results.push(ValueEvalResult::ComparisonResult(
-                                ComparisonResult::Fail(Compare::QueryIn(QueryIn {
-                                    diff,
-                                    rhs,
-                                    lhs: vec![l],
-                                })),
-                            ));
-                        }
+                } else if let PathAwareValue::List((_, list)) = l {
+                    let diff: Vec<&PathAwareValue> =
+                        list.iter().filter(|elem| !rhs.contains(elem)).collect();
+                    if diff.is_empty() {
+                        results.push(ValueEvalResult::ComparisonResult(
+                            ComparisonResult::Success(Compare::QueryIn(QueryIn {
+                                diff,
+                                rhs,
+                                lhs: vec![l],
+                            })),
+                        ));
                     } else {
-                        rhs.iter()
-                            .for_each(|rhs_elem| results.push(contained_in(l, rhs_elem)));
+                        results.push(ValueEvalResult::ComparisonResult(ComparisonResult::Fail(
+                            Compare::QueryIn(QueryIn {
+                                diff,
+                                rhs,
+                                lhs: vec![l],
+                            }),
+                        )));
                     }
+                } else {
+                    rhs.iter()
+                        .for_each(|rhs_elem| results.push(contained_in(l, rhs_elem)));
                 }
             }
 
@@ -445,7 +434,7 @@ impl Comparator for InOperation {
                         results.extend(lhs_selected.iter().map(|lhs| {
                             ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(
                                 ur.clone(),
-                                *lhs,
+                                lhs,
                             ))
                         }))
                     },
@@ -455,11 +444,10 @@ impl Comparator for InOperation {
                 let mut diff = Vec::with_capacity(lhs_selected.len());
                 'each_lhs: for eachl in &lhs_selected {
                     for eachr in &rhs_selected {
-                        match contained_in(*eachl, *eachr) {
-                            ValueEvalResult::ComparisonResult(ComparisonResult::Success(_)) => {
-                                continue 'each_lhs
-                            }
-                            _ => {}
+                        if let ValueEvalResult::ComparisonResult(ComparisonResult::Success(_)) =
+                            contained_in(eachl, eachr)
+                        {
+                            continue 'each_lhs;
                         }
                     }
                     diff.push(*eachl);
@@ -575,7 +563,7 @@ impl Comparator for EqOperation {
                         results.extend(lhs_selected.iter().map(|lhs| {
                             ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(
                                 ur.clone(),
-                                *lhs,
+                                lhs,
                             ))
                         }))
                     },
@@ -586,13 +574,13 @@ impl Comparator for EqOperation {
                     lhs_selected
                         .iter()
                         .filter(|e| !rhs_selected.contains(*e))
-                        .map(|e| *e)
+                        .copied()
                         .collect::<Vec<_>>()
                 } else {
                     rhs_selected
                         .iter()
                         .filter(|e| !lhs_selected.contains(*e))
-                        .map(|e| *e)
+                        .copied()
                         .collect::<Vec<_>>()
                 };
 
@@ -611,7 +599,7 @@ impl Comparator for EqOperation {
     }
 }
 
-impl Comparator for crate::rules::CmpOperator {
+impl Comparator for CmpOperator {
     fn compare<'value>(
         &self,
         lhs: &[QueryResult<'value>],
@@ -640,17 +628,15 @@ impl Comparator for crate::rules::CmpOperator {
                 comparator: compare_ge,
             }
             .compare(lhs, rhs),
-            _ => {
-                return Err(crate::rules::Error::IncompatibleError(format!(
-                    "Operation {} NOT PERMITTED",
-                    self
-                )))
-            }
+            _ => Err(Error::IncompatibleError(format!(
+                "Operation {} NOT PERMITTED",
+                self
+            ))),
         }
     }
 }
 
-impl Comparator for (crate::rules::CmpOperator, bool) {
+impl Comparator for (CmpOperator, bool) {
     fn compare<'value>(
         &self,
         lhs: &[QueryResult<'value>],

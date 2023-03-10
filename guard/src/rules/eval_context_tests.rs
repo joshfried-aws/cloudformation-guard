@@ -28,11 +28,7 @@ fn extraction_test() -> Result<()> {
             .rules
             .get("aws_route53_recordset")
             .map(|s| s.get(0))
-            .map(|s| match s {
-                Some(r) => Some(*r),
-                None => None,
-            })
-            .flatten(),
+            .and_then(|s| s.copied()),
         rules.guard_rules.get(0)
     );
 
@@ -100,13 +96,13 @@ fn no_query_return_root() -> Result<()> {
         recorder: None,
     };
     let query_results = eval.query(&[])?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 1);
     let path_ref = match query_results[0] {
         QueryResult::Resolved(r) => r,
         _ => unreachable!(),
     };
-    assert_eq!(std::ptr::eq(&path_value, path_ref), true);
+    assert!(std::ptr::eq(&path_value, path_ref));
     Ok(())
 }
 
@@ -119,13 +115,13 @@ fn empty_value_return_unresolved() -> Result<()> {
     };
     let query = AccessQuery::try_from("Resources.*")?.query;
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 1);
     let path_ref = match &query_results[0] {
         QueryResult::UnResolved(ur) => ur.traversed_to,
         _ => unreachable!(),
     };
-    assert_eq!(std::ptr::eq(&path_value, path_ref), true);
+    assert!(std::ptr::eq(&path_value, path_ref));
     Ok(())
 }
 
@@ -148,10 +144,10 @@ fn non_empty_value_return_results() -> Result<()> {
     };
     let query = AccessQuery::try_from("Resources.*")?.query;
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 2); // 2 resources
     for each in query_results {
-        assert_eq!(matches!(each, QueryResult::Resolved(_)), true);
+        assert!(matches!(each, QueryResult::Resolved(_)));
     }
 
     let paths = [
@@ -160,14 +156,14 @@ fn non_empty_value_return_results() -> Result<()> {
     ];
     let query = AccessQuery::try_from("Resources.*.Properties.Tags")?.query;
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 2); // 2 resources
     for each in query_results {
         match each {
             QueryResult::UnResolved(ur) => {
                 let path = ur.traversed_to.self_path();
                 println!("{}", path);
-                assert_eq!(paths.contains(path), true);
+                assert!(paths.contains(path));
             }
 
             _ => unreachable!(),
@@ -200,14 +196,14 @@ fn non_empty_value_mixed_results() -> Result<()> {
         recorder: None,
     };
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 2); // 2 resources
     for each in query_results {
         match each {
             QueryResult::Literal(_) => unreachable!(),
             QueryResult::Resolved(res) => {
                 assert_eq!(res.self_path().0.as_str(), "/Resources/s3/Properties/Tags");
-                assert_eq!(res.is_list(), true);
+                assert!(res.is_list());
             }
 
             QueryResult::UnResolved(ur) => {
@@ -245,7 +241,7 @@ fn non_empty_value_with_missing_list_property() -> Result<()> {
     };
     let query = AccessQuery::try_from("Resources.*.Properties.Tags[*].Value")?.query;
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 2); // 2 resources
     for each in query_results {
         match each {
@@ -255,7 +251,7 @@ fn non_empty_value_with_missing_list_property() -> Result<()> {
                     res.self_path().0.as_str(),
                     "/Resources/s3/Properties/Tags/0/Value"
                 );
-                assert_eq!(res.is_scalar(), true);
+                assert!(res.is_scalar());
             }
 
             QueryResult::UnResolved(ur) => {
@@ -294,7 +290,7 @@ fn non_empty_value_with_empty_list_property() -> Result<()> {
     };
     let query = AccessQuery::try_from("Resources.*.Properties.Tags[*].Value")?.query;
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 2); // 2 resources
     for each in query_results {
         match each {
@@ -304,7 +300,7 @@ fn non_empty_value_with_empty_list_property() -> Result<()> {
                     res.self_path().0.as_str(),
                     "/Resources/s3/Properties/Tags/0/Value"
                 );
-                assert_eq!(res.is_scalar(), true);
+                assert!(res.is_scalar());
             }
 
             QueryResult::UnResolved(ur) => {
@@ -343,13 +339,13 @@ fn map_filter_keys() -> Result<()> {
     };
     let query = AccessQuery::try_from("Resources[ keys == /s3/ ]")?.query;
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 1); // 2 resources
     for each in query_results {
         match each {
             QueryResult::Resolved(res) => {
                 assert_eq!(res.self_path().0.as_str(), "/Resources/s3Bucket");
-                assert_eq!(res.is_map(), true);
+                assert!(res.is_map());
             }
 
             _ => unreachable!(),
@@ -366,11 +362,8 @@ fn map_filter_keys() -> Result<()> {
         match each {
             QueryResult::Resolved(res) => {
                 let path = res.self_path().0.as_str();
-                assert_eq!(
-                    path == "/Resources/s3Bucket" || path == "/Resources/ec2",
-                    true
-                );
-                assert_eq!(res.is_map(), true);
+                assert!(path == "/Resources/s3Bucket" || path == "/Resources/ec2",);
+                assert!(res.is_map());
             }
 
             _ => unreachable!(),
@@ -387,8 +380,8 @@ fn map_filter_keys() -> Result<()> {
         match each {
             QueryResult::Resolved(res) => {
                 let path = res.self_path().0.as_str();
-                assert_eq!(path == "/Resources/s3Bucket", true);
-                assert_eq!(res.is_map(), true);
+                assert_eq!(path, "/Resources/s3Bucket");
+                assert!(res.is_map());
             }
 
             _ => unreachable!(),
@@ -405,8 +398,8 @@ fn map_filter_keys() -> Result<()> {
         match each {
             QueryResult::Resolved(res) => {
                 let path = res.self_path().0.as_str();
-                assert_eq!(path == "/Resources/s3Bucket", true);
-                assert_eq!(res.is_map(), true);
+                assert_eq!(path, "/Resources/s3Bucket");
+                assert!(res.is_map());
             }
 
             _ => unreachable!(),
@@ -440,7 +433,7 @@ fn test_with_converter() -> Result<()> {
     };
     let query = AccessQuery::try_from("resources.*.properties.tags[*].value")?.query;
     let query_results = eval.query(&query)?;
-    assert_eq!(query_results.is_empty(), false);
+    assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 2); // 2 resources
     for each in query_results {
         match each {
@@ -450,7 +443,7 @@ fn test_with_converter() -> Result<()> {
                     res.self_path().0.as_str(),
                     "/Resources/s3/Properties/Tags/0/Value"
                 );
-                assert_eq!(res.is_scalar(), true);
+                assert!(res.is_scalar());
             }
 
             QueryResult::UnResolved(ur) => {

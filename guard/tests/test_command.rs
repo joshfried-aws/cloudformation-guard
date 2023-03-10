@@ -5,23 +5,20 @@ pub(crate) mod utils;
 
 #[cfg(test)]
 mod test_command_tests {
-    use indoc::indoc;
-    use std::io::stdout;
 
     use rstest::rstest;
 
     use crate::assert_output_from_file_eq;
     use cfn_guard::commands::{
-        ALPHABETICAL, DIRECTORY, LAST_MODIFIED, PREVIOUS_ENGINE, RULES, RULES_AND_TEST_FILE,
-        RULES_FILE, TEST, TEST_DATA, VERBOSE,
+        ALPHABETICAL, DIRECTORY, LAST_MODIFIED, PREVIOUS_ENGINE, RULES_AND_TEST_FILE, RULES_FILE,
+        TEST, TEST_DATA, VERBOSE,
     };
     use cfn_guard::utils::reader::ReadBuffer::Stdin;
     use cfn_guard::utils::reader::Reader;
-    use cfn_guard::utils::writer::WriteBuffer::Stderr;
-    use cfn_guard::utils::writer::{WriteBuffer::Stdout, WriteBuffer::Vec as WBVec, Writer};
+    use cfn_guard::utils::writer::{WriteBuffer::Vec as WBVec, Writer};
     use cfn_guard::Error;
 
-    use crate::utils::{get_full_path_for_resource_file, CommandTestRunner, StatusCode};
+    use crate::utils::{CommandTestRunner, StatusCode};
 
     #[derive(Default)]
     struct TestCommandTestRunner<'args> {
