@@ -4,6 +4,7 @@ pub(crate) mod eval;
 pub(crate) mod eval_context;
 pub(crate) mod evaluate;
 pub(crate) mod exprs;
+pub(crate) mod functions;
 mod libyaml;
 pub(crate) mod parser;
 pub(crate) mod path_value;
