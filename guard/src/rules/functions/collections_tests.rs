@@ -1,6 +1,5 @@
 use super::*;
 use crate::rules::eval_context::eval_context_tests::BasicQueryTesting;
-use crate::rules::eval_context::*;
 use crate::rules::exprs::AccessQuery;
 use crate::rules::path_value::*;
 use crate::rules::EvalContext;
