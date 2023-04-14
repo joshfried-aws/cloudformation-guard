@@ -38,6 +38,7 @@ fn extraction_test() -> Result<()> {
 //
 // Query Testing without Filtering
 //
+#[derive(Debug)]
 pub(crate) struct BasicQueryTesting<'record, 'value> {
     pub(crate) root: &'value PathAwareValue,
     pub(crate) recorder: Option<&'record mut dyn RecordTracer<'value>>,
@@ -68,6 +69,14 @@ impl<'record, 'value, 'loc: 'value> EvalContext<'value, 'loc>
         _: &'value str,
         _: &'value PathAwareValue,
     ) -> Result<()> {
+        todo!()
+    }
+
+    fn resolve_function_call(&mut self, name: &str) -> Result<QueryResult> {
+        todo!()
+    }
+
+    fn find_function_expr(&mut self, name: &str) -> Result<&'value FunctionExpr<'value>> {
         todo!()
     }
 }

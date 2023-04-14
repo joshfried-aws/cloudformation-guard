@@ -3,6 +3,7 @@ use crate::rules::exprs::{
     AccessQuery, Block, Conjunctions, GuardClause, LetExpr, LetValue, ParameterizedRule, QueryPart,
     Rule, RulesFile, SliceDisplay,
 };
+use crate::rules::functions::collections::count;
 use crate::rules::path_value::{MapValue, PathAwareValue};
 use crate::rules::values::CmpOperator;
 use crate::rules::Result;
@@ -17,11 +18,18 @@ use lazy_static::lazy_static;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
+use super::eval::{create_query_result, eval_function_call};
+
+use super::exprs::FunctionExpr;
+use super::path_value::Path;
+
+#[derive(Debug)]
 pub(crate) struct Scope<'value, 'loc: 'value> {
     root: &'value PathAwareValue,
     resolved_variables: HashMap<&'value str, Vec<QueryResult<'value>>>,
     literals: HashMap<&'value str, &'value PathAwareValue>,
     variable_queries: HashMap<&'value str, &'value AccessQuery<'loc>>,
+    function_expressions: HashMap<&'value str, &'value FunctionExpr<'loc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
@@ -31,6 +39,7 @@ pub(crate) struct EventRecord<'value> {
     pub(crate) children: Vec<EventRecord<'value>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct RootScope<'value, 'loc: 'value> {
     scope: Scope<'value, 'loc>,
     rules: HashMap<&'value str, Vec<&'value Rule<'loc>>>,
@@ -48,6 +57,7 @@ impl<'value, 'loc: 'value> RootScope<'value, 'loc> {
             self.rules,
             self.parameterized_rules,
             new_root,
+            HashMap::new(),
         )
     }
 
@@ -62,11 +72,13 @@ impl<'value, 'loc: 'value> RootScope<'value, 'loc> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct BlockScope<'value, 'loc: 'value, 'eval> {
     scope: Scope<'value, 'loc>,
     parent: &'eval mut dyn EvalContext<'value, 'loc>,
 }
 
+#[derive(Debug)]
 pub(crate) struct ValueScope<'value, 'eval, 'loc: 'value> {
     pub(crate) root: &'value PathAwareValue,
     pub(crate) parent: &'eval mut dyn EvalContext<'value, 'loc>,
@@ -75,13 +87,57 @@ pub(crate) struct ValueScope<'value, 'eval, 'loc: 'value> {
 type ExtractVariableResult<'value, 'loc> = Result<(
     HashMap<&'value str, &'value PathAwareValue>,
     HashMap<&'value str, &'value AccessQuery<'loc>>,
+    HashMap<&'value str, &'value FunctionExpr<'loc>>,
 )>;
+
+pub(crate) trait FnResolver<'value, 'loc: 'value>: EvalContext<'value, 'loc> {
+    fn resolve_functions(
+        &mut self,
+        functions: HashMap<&'loc str, &'loc FunctionExpr>,
+    ) -> Result<Vec<(&str, PathAwareValue)>>;
+}
+
+// impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc> {
+impl<'value, 'loc: 'value> FnResolver<'value, 'loc> for RootScope<'value, 'loc> {
+    fn resolve_functions(
+        &mut self,
+        functions: HashMap<&'loc str, &'loc FunctionExpr>,
+    ) -> Result<Vec<(&str, PathAwareValue)>> {
+        let mut res = vec![];
+
+        for (function_name, function) in functions {
+            let mut params = vec![];
+
+            for param in &function.parameters {
+                match param {
+                    LetValue::Value(val) => params.push(QueryResult::Literal(val)),
+                    LetValue::AccessClause(query) => {
+                        let match_all = query.match_all;
+                        let mut result = query_retrieval(0, &query.query, self.scope.root, self)?;
+                        params.append(&mut result);
+                    }
+                    _ => {}
+                }
+            }
+            let count = count(&params);
+
+            res.push((
+                function_name,
+                PathAwareValue::Int((Path::root(), count as i64)),
+            ));
+        }
+        Ok(res)
+    }
+}
 
 fn extract_variables<'value, 'loc: 'value>(
     expressions: &'value Vec<LetExpr<'loc>>,
 ) -> ExtractVariableResult<'value, 'loc> {
-    let mut literals = HashMap::with_capacity(expressions.len());
-    let mut queries = HashMap::with_capacity(expressions.len());
+    let max_capacity = expressions.len();
+    let mut literals = HashMap::with_capacity(max_capacity);
+    let mut queries = HashMap::with_capacity(max_capacity);
+    let mut functions = HashMap::with_capacity(max_capacity);
+
     for each in expressions {
         match &each.value {
             LetValue::Value(v) => {
@@ -92,11 +148,70 @@ fn extract_variables<'value, 'loc: 'value>(
                 queries.insert(each.var.as_str(), query);
             }
 
-            LetValue::FunctionCall(_) => todo!(),
+            LetValue::FunctionCall(function) => {
+                functions.insert(each.var.as_str(), function);
+            }
         }
     }
-    Ok((literals, queries))
+
+    Ok((literals, queries, functions))
 }
+
+enum Function {
+    Count,
+    UrlDecode,
+    JsonParse,
+    RegexReplace,
+    Substring,
+    ToUpper,
+    ToLower,
+    Join,
+}
+
+impl From<&String> for Function {
+    fn from(value: &String) -> Self {
+        match value.as_str() {
+            "count" => Function::Count,
+            "url_decode" => Function::UrlDecode,
+            "json_parse" => Function::JsonParse,
+            "regex_replace" => Function::RegexReplace,
+            "substring" => Function::Substring,
+            "to_upper" => Function::ToUpper,
+            "to_lower" => Function::ToLower,
+            "join" => Function::Join,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+// fn eval_function_call(expr: &FunctionExpr<'_>) {
+//     let function = Function::from(&expr.name);
+
+//     match function {
+//         Function::Count => {
+//             let args = expr.parameters.iter().fold(vec![], |mut res, val| {
+//                 if let LetValue::AccessClause(query) = val {
+//                     res.push(query);
+//                 }
+
+//                 res
+//             });
+
+//             todo!();
+
+//             // let count = count(args);
+//         }
+//         Function::UrlDecode => todo!(),
+//         Function::JsonParse => todo!(),
+//         Function::RegexReplace => todo!(),
+//         Function::Substring => todo!(),
+//         Function::ToUpper => todo!(),
+//         Function::ToLower => todo!(),
+//         Function::Join => todo!(),
+//     }
+
+//     todo!();
+// }
 
 fn retrieve_index<'value>(
     parent: &'value PathAwareValue,
@@ -320,8 +435,18 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
     if query_index >= query.len() {
         return Ok(vec![QueryResult::Resolved(current)]);
     }
-
     if query_index == 0 && query[query_index].is_variable() {
+        // NOTE: follow this train of thought all this is commented out for the time being cause i
+        // didnt have enough time to dive deep here + i wanted everything to compile and tests to
+        // pass for your debugging
+        //
+        // let name = &query[query_index].variable().unwrap();
+
+        // if let Ok(f) = resolver.find_function_expr(name) {
+        //     // let val = eval_function_call(f, resolver)?;
+        //     // let val = eval_function_call(function, resolver)?;
+        // }
+
         let retrieved = resolver.resolve_variable(query[query_index].variable().unwrap())?;
         let mut resolved = Vec::with_capacity(retrieved.len());
         for each in retrieved {
@@ -808,7 +933,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         vec![QueryResult::Literal(path_value)]
                     }
 
-                    LetValue::FunctionCall(_) => todo!(),
+                    LetValue::FunctionCall(_) => panic!("this is a stubbed panic for when we enter map_key_filter and we match on a functioncall for the letvalue"),
                 };
 
                 let lhs = map
@@ -889,7 +1014,8 @@ pub(crate) fn root_scope<'value, 'loc: 'value>(
     rules_file: &'value RulesFile<'loc>,
     root: &'value PathAwareValue,
 ) -> Result<RootScope<'value, 'loc>> {
-    let (literals, queries) = extract_variables(&rules_file.assignments)?;
+    let (literals, queries, functions) = extract_variables(&rules_file.assignments)?;
+
     let mut lookup_cache = HashMap::with_capacity(rules_file.guard_rules.len());
     for rule in &rules_file.guard_rules {
         lookup_cache
@@ -902,15 +1028,26 @@ pub(crate) fn root_scope<'value, 'loc: 'value>(
     for pr in rules_file.parameterized_rules.iter() {
         parameterized_rules.insert(pr.rule.rule_name.as_str(), pr);
     }
-    root_scope_with(literals, queries, lookup_cache, parameterized_rules, root)
+    let mut root = root_scope_with(
+        literals,
+        queries,
+        lookup_cache,
+        parameterized_rules,
+        root,
+        functions.clone(),
+    )?;
+
+    Ok(root)
 }
 
+// TODO: figure out why this returns a result and now just the value
 pub(crate) fn root_scope_with<'value, 'loc: 'value>(
     literals: HashMap<&'value str, &'value PathAwareValue>,
     queries: HashMap<&'value str, &'value AccessQuery<'loc>>,
     lookup_cache: HashMap<&'value str, Vec<&'value Rule<'loc>>>,
     parameterized_rules: HashMap<&'value str, &'value ParameterizedRule<'loc>>,
     root: &'value PathAwareValue,
+    function_expressions: HashMap<&'value str, &'value FunctionExpr<'loc>>,
 ) -> Result<RootScope<'value, 'loc>> {
     Ok(RootScope {
         scope: Scope {
@@ -919,6 +1056,7 @@ pub(crate) fn root_scope_with<'value, 'loc: 'value>(
             variable_queries: queries,
             //resolved_variables: std::cell::RefCell::new(HashMap::new()),
             resolved_variables: HashMap::new(),
+            function_expressions,
         },
         rules: lookup_cache,
         parameterized_rules,
@@ -935,7 +1073,7 @@ pub(crate) fn block_scope<'value, 'block, 'loc: 'value, 'eval, T>(
     root: &'value PathAwareValue,
     parent: &'eval mut dyn EvalContext<'value, 'loc>,
 ) -> Result<BlockScope<'value, 'loc, 'eval>> {
-    let (literals, variable_queries) = extract_variables(&block.assignments)?;
+    let (literals, variable_queries, functions) = extract_variables(&block.assignments)?;
     Ok(BlockScope {
         scope: Scope {
             literals,
@@ -943,11 +1081,13 @@ pub(crate) fn block_scope<'value, 'block, 'loc: 'value, 'eval, T>(
             root,
             //resolved_variables: std::cell::RefCell::new(HashMap::new()),
             resolved_variables: HashMap::new(),
+            function_expressions: functions,
         },
         parent,
     })
 }
 
+#[derive(Debug)]
 pub(crate) struct RecordTracker<'value> {
     pub(crate) events: Vec<EventRecord<'value>>,
     pub(crate) final_event: Option<EventRecord<'value>>,
@@ -1066,6 +1206,30 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
     }
 
     fn resolve_variable(&mut self, variable_name: &'value str) -> Result<Vec<QueryResult<'value>>> {
+        // NOTE: this might not actually be what we want to do here...what i mean is we might wanna resolve
+        // function calls somewhere else entirely
+        if let Some(f) = self.scope.function_expressions.get(variable_name) {
+            // if this works as expected in the if let Some branch for resolved variables we will
+            // return something
+            let val = eval_function_call(f, self)?;
+
+            let res = create_query_result(&val);
+
+            // return Ok(vec![res]);
+
+            // self.scope
+            //     .resolved_variables
+            //     .insert(variable_name, vec![val]);
+            //
+            // dbg!(val);
+            //
+            //
+            // self.scope
+            //     .resolved_variables
+            //     .insert(variable_name, vec![res]);
+            // return Ok(vec![res]);
+        }
+
         if let Some(val) = self.scope.literals.get(variable_name) {
             return Ok(vec![QueryResult::Literal(val)]);
         }
@@ -1080,7 +1244,7 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
                 return Err(Error::MissingValue(format!(
                     "Could not resolve variable by name {} across scopes",
                     variable_name
-                )))
+                )));
             }
         };
 
@@ -1112,6 +1276,25 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
             .or_default()
             .push(QueryResult::Resolved(key));
         Ok(())
+    }
+
+    fn resolve_function_call(&mut self, name: &str) -> Result<QueryResult> {
+        todo!()
+    }
+
+    fn add_variable_capture_index(&mut self, _: &str, _: &'value PathAwareValue) -> Result<()> {
+        Ok(())
+    }
+
+    fn find_function_expr(&mut self, name: &str) -> Result<&'value FunctionExpr<'value>> {
+        match self.scope.function_expressions.get(name) {
+            Some(function) => Ok(*function),
+            _ => Err(Error::MissingValue(format!(
+                "Function Expression with variable name {} was not found, candiate {:?}",
+                name,
+                self.scope.function_expressions.keys()
+            ))),
+        }
     }
 }
 
@@ -1155,6 +1338,14 @@ impl<'value, 'loc: 'value, 'eval> EvalContext<'value, 'loc> for ValueScope<'valu
         key: &'value PathAwareValue,
     ) -> Result<()> {
         self.parent.add_variable_capture_key(variable_name, key)
+    }
+
+    fn resolve_function_call(&mut self, name: &str) -> Result<QueryResult> {
+        todo!()
+    }
+
+    fn find_function_expr(&mut self, name: &str) -> Result<&'value FunctionExpr<'value>> {
+        todo!()
     }
 }
 
@@ -1226,6 +1417,14 @@ impl<'value, 'loc: 'value, 'eval> EvalContext<'value, 'loc> for BlockScope<'valu
         key: &'value PathAwareValue,
     ) -> Result<()> {
         self.parent.add_variable_capture_key(variable_name, key)
+    }
+
+    fn resolve_function_call(&mut self, name: &str) -> Result<QueryResult> {
+        todo!()
+    }
+
+    fn find_function_expr(&mut self, name: &str) -> Result<&'value FunctionExpr<'value>> {
+        todo!()
     }
 }
 

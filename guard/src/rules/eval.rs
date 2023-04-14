@@ -2,7 +2,8 @@ use super::exprs::*;
 use super::*;
 use crate::rules::eval::operators::Comparator;
 use crate::rules::eval_context::{block_scope, ValueScope};
-use crate::rules::path_value::compare_eq;
+use crate::rules::functions::collections::count;
+use crate::rules::path_value::{compare_eq, Path};
 use std::collections::HashMap;
 
 mod operators;
@@ -1114,7 +1115,7 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
                         return Err(e);
                     }
                 },
-                LetValue::FunctionCall(_) => todo!(),
+                LetValue::FunctionCall(_) => panic!("this is a stubbed panic for when we match on FunctionCall in eval_guard_clause for the letvalue"),
             },
 
             None => {
@@ -1485,6 +1486,7 @@ fn eval_when_condition_block<'value, 'loc: 'value>(
     )
 }
 
+#[derive(Debug)]
 struct ResolvedParameterContext<'eval, 'value, 'loc: 'value> {
     call_rule: &'value ParameterizedNamedRuleClause<'loc>,
     resolved_parameters: HashMap<&'value str, Vec<QueryResult<'value>>>,
@@ -1526,6 +1528,14 @@ impl<'eval, 'value, 'loc: 'value> EvalContext<'value, 'loc>
         key: &'value PathAwareValue,
     ) -> Result<()> {
         self.parent.add_variable_capture_key(variable_name, key)
+    }
+
+    fn resolve_function_call(&mut self, name: &str) -> Result<QueryResult> {
+        self.parent.resolve_function_call(name)
+    }
+
+    fn find_function_expr(&mut self, name: &str) -> Result<&'value FunctionExpr<'value>> {
+        self.parent.find_function_expr(name)
     }
 }
 
@@ -1585,14 +1595,17 @@ pub(in crate::rules) fn eval_parameterized_rule_call<'value, 'loc: 'value>(
                     resolver.query(&query.query)?,
                 );
             }
-            LetValue::FunctionCall(_) => todo!(),
+            LetValue::FunctionCall(_) => panic!("this is a stubbed panic for when we match on FunctionCall for the letvalue inside of eval_parameterized_rule_call"),
         }
     }
+
+    // TODO: copy this for functions
     let mut eval = ResolvedParameterContext {
         parent: resolver,
         resolved_parameters,
         call_rule,
     };
+
     eval_rule(&param_rule.rule, &mut eval)
 }
 
@@ -1793,15 +1806,64 @@ pub(in crate::rules) fn eval_rule_clause<'value, 'loc: 'value>(
     }
 }
 
+#[derive(Debug)]
+pub struct ResolvedFn<'value> {
+    params: Vec<QueryResult<'value>>,
+    name: String,
+}
+
+impl<'value> ResolvedFn<'value> {
+    fn evaluate(&self) -> PathAwareValue {
+        match self.name.as_str() {
+            "count" => PathAwareValue::Int((Path::root(), count(&self.params) as i64)),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+pub(crate) fn create_query_result(val: &PathAwareValue) -> QueryResult {
+    QueryResult::Literal(val)
+}
+
+pub(in crate::rules) fn eval_function_call<'value, 'loc: 'value>(
+    function: &'value FunctionExpr<'loc>,
+    resolver: &mut dyn EvalContext<'value, 'loc>,
+) -> Result<PathAwareValue> {
+    let mut resolved_parameters = Vec::new();
+    for each in function.parameters.iter() {
+        match each {
+            LetValue::Value(val) => {
+                resolved_parameters.push(QueryResult::Resolved(val));
+            }
+            LetValue::AccessClause(query) => {
+                let mut other = resolver.query(&query.query)?;
+                resolved_parameters.append(&mut other);
+            }
+            LetValue::FunctionCall(_) => panic!(
+                "this is a stubbed panic when we match on function call when in eval_function_call"
+            ),
+        }
+    }
+
+    let r = ResolvedFn {
+        name: function.name.clone(),
+        params: resolved_parameters,
+    };
+
+    Ok(r.evaluate())
+}
+
 pub(in crate::rules) fn eval_rule<'value, 'loc: 'value>(
     rule: &'value Rule<'loc>,
-    resolver: &mut dyn EvalContext<'value, 'loc>,
+    resolver: &mut dyn EvalContext<'value, 'loc>, // root scope
 ) -> Result<Status> {
     let context = rule.rule_name.to_string();
     resolver.start_record(&context)?;
+
     let block = if let Some(conditions) = &rule.conditions {
         let when_context = format!("Rule#{}/When", context);
         resolver.start_record(&when_context)?;
+
         match eval_conjunction_clauses(conditions, resolver, eval_when_clause) {
             Ok(status) => {
                 if status != Status::PASS {
@@ -1873,12 +1935,13 @@ impl<'loc> std::fmt::Display for RulesFile<'loc> {
 
 pub(crate) fn eval_rules_file<'value, 'loc: 'value>(
     rule: &'value RulesFile<'loc>,
-    resolver: &mut dyn EvalContext<'value, 'loc>,
+    resolver: &mut dyn EvalContext<'value, 'loc>, // root scope
 ) -> Result<Status> {
     let context = format!("{}", rule);
     resolver.start_record(&context)?;
     let mut fails = 0;
     let mut passes = 0;
+
     for each_rule in &rule.guard_rules {
         match eval_rule(each_rule, resolver) {
             Ok(status) => match status {
@@ -1936,18 +1999,22 @@ where
     Ok(loop {
         let mut num_passes = 0;
         let mut num_fails = 0;
+
         let context = format!("{}#disjunction", std::any::type_name::<T>());
         'conjunction: for conjunction in conjunctions {
             let mut num_of_disjunction_fails = 0;
             let multiple_ors_present = conjunction.len() > 1;
+
             if multiple_ors_present {
                 resolver.start_record(&context)?;
             }
+
             for disjunction in conjunction {
                 match eval_fn(disjunction, resolver) {
                     Ok(status) => match status {
                         Status::PASS => {
                             num_passes += 1;
+
                             if multiple_ors_present {
                                 resolver.end_record(
                                     &context,
@@ -1958,6 +2025,7 @@ where
                                     }),
                                 )?;
                             }
+
                             continue 'conjunction;
                         }
                         Status::SKIP => {}

@@ -1758,7 +1758,8 @@ fn test_inner_when_skipped() -> Result<()> {
 
 #[test]
 fn test_multiple_valued_clause_reporting() -> Result<()> {
-    struct ReportAssertions {}
+    #[derive(Debug)]
+    struct ReportAssertions;
 
     impl<'value> RecordTracer<'value> for ReportAssertions {
         fn start_record(&mut self, _context: &str) -> Result<()> {
@@ -3859,7 +3860,6 @@ fn parameterized_evaluations() -> Result<()> {
     "###;
     let template =
         PathAwareValue::try_from(serde_yaml::from_str::<serde_yaml::Value>(template_value)?)?;
-
     let mut eval = root_scope(&rules_files, &template)?;
     let status = eval_rules_file(&rules_files, &mut eval)?;
     let top = eval.reset_recorder().extract();

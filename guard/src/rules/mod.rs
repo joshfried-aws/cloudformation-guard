@@ -20,7 +20,9 @@ use lazy_static::lazy_static;
 use nom::lib::std::convert::TryFrom;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Formatter;
+use std::fmt::{Debug, Formatter};
+
+use self::exprs::FunctionExpr;
 
 pub(crate) type Result<R> = std::result::Result<R, Error>;
 
@@ -341,7 +343,7 @@ pub(crate) enum RecordType<'value> {
     ClauseValueCheck(ClauseCheck<'value>),
 }
 
-pub(crate) trait RecordTracer<'value> {
+pub(crate) trait RecordTracer<'value>: Debug {
     fn start_record(&mut self, context: &str) -> Result<()>;
     fn end_record(&mut self, context: &str, record: RecordType<'value>) -> Result<()>;
 }
@@ -364,8 +366,12 @@ pub(crate) trait EvalContext<'value, 'loc: 'value>: RecordTracer<'value> {
     fn add_variable_capture_index(&mut self, _: &str, _: &'value PathAwareValue) -> Result<()> {
         Ok(())
     }
+
+    fn find_function_expr(&mut self, name: &str) -> Result<&'value FunctionExpr<'value>>;
+    fn resolve_function_call(&mut self, name: &str) -> Result<QueryResult>;
 }
 
+#[deprecated]
 pub(crate) trait EvaluationContext {
     fn resolve_variable(&self, variable: &str) -> Result<Vec<&PathAwareValue>>;
 

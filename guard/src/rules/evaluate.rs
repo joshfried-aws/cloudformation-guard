@@ -15,6 +15,8 @@ use crate::rules::path_value::{PathAwareValue, QueryResolver};
 use crate::rules::values::*;
 use crate::rules::{Evaluate, EvaluationContext, EvaluationType, Result, Status};
 
+use super::exprs::FunctionExpr;
+
 //////////////////////////////////////////////////////////////////////////////////////////////////
 //                                                                                              //
 //  Implementation for Guard Evaluations                                                        //
@@ -1044,6 +1046,7 @@ fn extract_variables<'s, 'loc>(
     expressions: &'s Vec<LetExpr<'loc>>,
     vars: &mut HashMap<&'s str, &'s PathAwareValue>,
     queries: &mut HashMap<&'s str, &'s AccessQuery<'loc>>,
+    functions: &mut HashMap<&'s str, &'s FunctionExpr<'loc>>,
 ) -> Result<()> {
     for each in expressions {
         match &each.value {
@@ -1054,7 +1057,9 @@ fn extract_variables<'s, 'loc>(
             LetValue::AccessClause(query) => {
                 queries.insert(&each.var, query);
             }
-            LetValue::FunctionCall(_) => {}
+            LetValue::FunctionCall(function) => {
+                functions.insert(&each.var, function);
+            }
         }
     }
     Ok(())
@@ -1062,6 +1067,7 @@ fn extract_variables<'s, 'loc>(
 
 #[derive(Debug)]
 #[allow(dead_code)]
+#[deprecated]
 pub(crate) struct RootScope<'s, 'loc> {
     rules: &'s RulesFile<'loc>,
     input_context: &'s PathAwareValue,
@@ -1070,17 +1076,29 @@ pub(crate) struct RootScope<'s, 'loc> {
     literals: HashMap<&'s str, &'s PathAwareValue>,
     rule_by_name: HashMap<&'s str, &'s Rule<'loc>>,
     rule_statues: std::cell::RefCell<HashMap<&'s str, Status>>,
+    pending_function_calls: HashMap<&'s str, &'s FunctionExpr<'loc>>,
 }
 
 impl<'s, 'loc> RootScope<'s, 'loc> {
     pub(crate) fn new(rules: &'s RulesFile<'loc>, value: &'s PathAwareValue) -> Result<Self> {
         let mut literals = HashMap::new();
         let mut pending = HashMap::new();
-        extract_variables(&rules.assignments, &mut literals, &mut pending)?;
+        let mut pending_function_calls = HashMap::new();
+
+        // TODO: seems like this is actually going to be a deprecated codepath so dont worry about
+        // this
+        extract_variables(
+            &rules.assignments,
+            &mut literals,
+            &mut pending,
+            &mut pending_function_calls,
+        )?;
+
         let mut lookup_cache = HashMap::with_capacity(rules.guard_rules.len());
         for rule in &rules.guard_rules {
             lookup_cache.insert(rule.rule_name.as_str(), rule);
         }
+
         Ok(RootScope {
             rules,
             input_context: value,
@@ -1089,12 +1107,20 @@ impl<'s, 'loc> RootScope<'s, 'loc> {
             variables: std::cell::RefCell::new(HashMap::new()),
             rule_by_name: lookup_cache,
             rule_statues: std::cell::RefCell::new(HashMap::with_capacity(rules.guard_rules.len())),
+            pending_function_calls,
         })
     }
 }
 
 impl<'s, 'loc> EvaluationContext for RootScope<'s, 'loc> {
     fn resolve_variable(&self, variable: &str) -> Result<Vec<&PathAwareValue>> {
+        // TODO: figure out if we actually need to have any function vall resolution here or if it
+        // should just be done in a completely different place
+        //
+        // if let Some(function) = self.pending_function_calls.get(variable) {
+        //     return Ok(vec![resolve_function_expression(function, self)?]);
+        // }
+
         if let Some(literal) = self.literals.get(variable) {
             return Ok(vec![literal]);
         }
@@ -1102,6 +1128,7 @@ impl<'s, 'loc> EvaluationContext for RootScope<'s, 'loc> {
         if let Some(value) = self.variables.borrow().get(variable) {
             return Ok(value.clone());
         }
+
         return if let Some((key, query)) = self.pending_queries.get_key_value(variable) {
             let all = query.match_all;
             let query: &[QueryPart<'_>] = &query.query;
@@ -1178,7 +1205,15 @@ impl<'s, T> BlockScope<'s, T> {
     ) -> Result<Self> {
         let mut literals = HashMap::new();
         let mut pending = HashMap::new();
-        extract_variables(&block_type.assignments, &mut literals, &mut pending)?;
+        let mut functions = HashMap::new(); // NOTE: this is currently how we handle keeping these
+                                            // parsed function calls in memory until we need to resolve them
+        extract_variables(
+            &block_type.assignments,
+            &mut literals,
+            &mut pending,
+            &mut functions,
+        )?;
+
         Ok(BlockScope {
             block_type,
             input_context: context,

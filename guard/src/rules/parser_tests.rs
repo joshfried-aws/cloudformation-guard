@@ -1,3 +1,5 @@
+use indoc::indoc;
+
 use crate::rules::path_value::PathAwareValue;
 use crate::rules::values::WithinRange;
 use crate::rules::{EvaluationContext, EvaluationType, Status};
@@ -4463,6 +4465,7 @@ fn test_builtin_function_call_expr() -> Result<(), Error> {
     assert_eq!(function.parameters.len(), 1);
     let parameter = &function.parameters[0];
     assert!(matches!(parameter, LetValue::AccessClause(_)));
+
     if let LetValue::AccessClause(query) = parameter {
         assert!(query.match_all);
         assert_eq!(query.query.len(), 4);
@@ -4535,4 +4538,29 @@ fn test_parse_value_when_strings_are_randomly_generated() {
         let cmp = unsafe { Span::new_from_raw_offset(value.len(), 5, value, "") };
         assert!(parse_value(cmp).is_err())
     }
+}
+
+#[test]
+fn test_parse_assignment_with_function_call() {
+    let input = "let num = count(%s3_buckets_bucket_logging_enabled)";
+
+    let res = assignment(from_str2(input)).unwrap();
+
+    assert_eq!(res.1.var, "num");
+
+    let function = res.1.value;
+    assert!(matches!(function, LetValue::FunctionCall(_)));
+
+    if let LetValue::FunctionCall(function) = function {
+        assert_eq!(function.name, "count");
+        assert_eq!(function.parameters.len(), 1);
+        assert!(matches!(function.parameters[0], LetValue::AccessClause(_)));
+    }
+}
+
+#[test]
+fn test_parse_fn_when_fn_expression_is_part_of_binary_operator() {
+    let input = "count(%s3_buckets_bucket_logging_enabled) < 2";
+
+    // todo!()
 }
