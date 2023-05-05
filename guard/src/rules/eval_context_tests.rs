@@ -209,6 +209,7 @@ fn non_empty_value_mixed_results() -> Result<()> {
                     "/Resources/ec2/Properties"
                 );
             }
+            QueryResult::Computed(_) => todo!(),
         }
     }
 
@@ -257,6 +258,7 @@ fn non_empty_value_with_missing_list_property() -> Result<()> {
                     "/Resources/ec2/Properties"
                 );
             }
+            QueryResult::Computed(_) => todo!(),
         }
     }
 
@@ -306,6 +308,7 @@ fn non_empty_value_with_empty_list_property() -> Result<()> {
                     "/Resources/ec2/Properties/Tags"
                 );
             }
+            QueryResult::Computed(_) => todo!(),
         }
     }
 
@@ -449,6 +452,7 @@ fn test_with_converter() -> Result<()> {
                     "/Resources/ec2/Properties/Tags"
                 );
             }
+            QueryResult::Computed(_) => todo!(),
         }
     }
 

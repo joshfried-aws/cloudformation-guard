@@ -161,6 +161,7 @@ pub(crate) enum QueryResult<'value> {
     Literal(&'value PathAwareValue),
     Resolved(&'value PathAwareValue),
     UnResolved(UnResolved<'value>),
+    Computed(PathAwareValue),
 }
 
 impl<'value> QueryResult<'value> {

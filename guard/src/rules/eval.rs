@@ -7,34 +7,41 @@ use std::collections::HashMap;
 
 mod operators;
 
+// TODO: why is this a result...seems like it should just return a bool
 fn exists_operation(value: &QueryResult<'_>) -> Result<bool> {
+    // Ok(matches!(value, QueryResult::UnResolved(_))) NOTE: can clean this up to look like this
     Ok(match value {
-        QueryResult::Resolved(_) | QueryResult::Literal(_) => true,
+        QueryResult::Resolved(_) | QueryResult::Literal(_) | QueryResult::Computed(_) => true,
         QueryResult::UnResolved(_) => false,
     })
 }
 
 fn element_empty_operation(value: &QueryResult<'_>) -> Result<bool> {
-    let result = match value {
-        QueryResult::Literal(value) | QueryResult::Resolved(value) => match value {
-            PathAwareValue::List((_, list)) => list.is_empty(),
-            PathAwareValue::Map((_, map)) => map.is_empty(),
-            PathAwareValue::String((_, string)) => string.is_empty(),
-            PathAwareValue::Bool((_, boolean)) => (*boolean).to_string().is_empty(),
-            _ => {
-                return Err(Error::IncompatibleError(format!(
-                    "Attempting EMPTY operation on type {} that does not support it at {}",
-                    value.type_info(),
-                    value.self_path()
-                )))
-            }
-        },
-
+    match value {
+        QueryResult::Literal(value) | QueryResult::Resolved(value) => handle_empty_operation(value),
         //
         // !EXISTS is the same as EMPTY
         //
-        QueryResult::UnResolved(_) => true,
+        QueryResult::UnResolved(_) => Ok(true),
+        QueryResult::Computed(value) => handle_empty_operation(value),
+    }
+}
+
+fn handle_empty_operation(value: &PathAwareValue) -> Result<bool> {
+    let result = match value {
+        PathAwareValue::List((_, list)) => list.is_empty(),
+        PathAwareValue::Map((_, map)) => map.is_empty(),
+        PathAwareValue::String((_, string)) => string.is_empty(),
+        PathAwareValue::Bool((_, boolean)) => (*boolean).to_string().is_empty(),
+        _ => {
+            return Err(Error::IncompatibleError(format!(
+                "Attempting EMPTY operation on type {} that does not support it at {}",
+                value.type_info(),
+                value.self_path()
+            )))
+        }
     };
+
     Ok(result)
 }
 
@@ -50,6 +57,10 @@ macro_rules! is_type_fn {
                 }
 
                 QueryResult::UnResolved(_) => false,
+                QueryResult::Computed(resolved) => match resolved {
+                    $type_ => true,
+                    _ => false,
+                },
             })
         }
     };
@@ -231,6 +242,26 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
                                     false => Status::PASS, // !EXISTS == EMPTY so PASS
                                 },
                             )
+                        }
+                        QueryResult::Computed(res) => {
+                            {
+                                //
+                                // NULL == EMPTY
+                                //
+                                let status = if cmp.1 {
+                                    // Not empty
+                                    !res.is_null()
+                                } else {
+                                    res.is_null()
+                                };
+                                (
+                                    QueryResult::Computed(res),
+                                    match status {
+                                        true => Status::PASS,  // not_empty
+                                        false => Status::FAIL, // fail not_empty
+                                    },
+                                )
+                            }
                         }
                     };
                     let status = if inverse {
@@ -534,9 +565,63 @@ where
                     lhs,
                 }));
             }
+            QueryResult::Computed(_) => todo!(),
         }
     }
     Ok(statues)
+}
+
+fn handle_lhs_compare<'r, 'value: 'r, 'loc: 'value>(
+    cmp: (CmpOperator, bool),
+    l: &'value PathAwareValue,
+    rhs: &'r [QueryResult<'value>],
+    context: String,
+    custom_message: Option<String>,
+    eval_context: &mut dyn EvalContext<'value, 'loc>,
+) -> Result<Vec<(QueryResult<'value>, Status)>> {
+    let mut statuses: Vec<(QueryResult<'_>, Status)> = vec![];
+    let r = match cmp {
+        (CmpOperator::Eq, is_not) => each_lhs_compare(not_compare(compare_eq, is_not), l, rhs)?,
+
+        (CmpOperator::Ge, is_not) => {
+            each_lhs_compare(not_compare(path_value::compare_ge, is_not), l, rhs)?
+        }
+
+        (CmpOperator::Gt, is_not) => {
+            each_lhs_compare(not_compare(path_value::compare_gt, is_not), l, rhs)?
+        }
+
+        (CmpOperator::Lt, is_not) => {
+            each_lhs_compare(not_compare(path_value::compare_lt, is_not), l, rhs)?
+        }
+
+        (CmpOperator::Le, is_not) => {
+            each_lhs_compare(not_compare(path_value::compare_le, is_not), l, rhs)?
+        }
+
+        (CmpOperator::In, is_not) => each_lhs_compare(in_cmp(is_not), l, rhs)?,
+
+        _ => unreachable!(),
+    };
+
+    match cmp.0 {
+        CmpOperator::In => {
+            statuses.extend(report_at_least_one(
+                r,
+                cmp,
+                context,
+                custom_message,
+                eval_context,
+            )?);
+        }
+
+        _ => {
+            let status = report_all_values(r, cmp, context, custom_message, eval_context)?;
+            statuses.extend(status);
+        }
+    };
+
+    Ok(statuses)
 }
 
 fn in_cmp(not_in: bool) -> impl Fn(&PathAwareValue, &PathAwareValue) -> Result<bool> {
@@ -772,16 +857,17 @@ where
     }
 }
 
-fn binary_operation<'value, 'loc: 'value>(
-    lhs_query: &'value [QueryPart<'loc>],
-    rhs: &[QueryResult<'value>],
+fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
+    lhs: &'query [QueryResult<'value>],
+    // lhs_query: &'value
+    rhs: &'query [QueryResult<'value>],
     cmp: (CmpOperator, bool),
     context: String,
     custom_message: Option<String>,
     eval_context: &mut dyn EvalContext<'value, 'loc>,
-) -> Result<EvaluationResult<'value>> {
-    let lhs = eval_context.query(lhs_query)?;
-    let results = cmp.compare(&lhs, rhs)?;
+) -> Result<EvaluationResult<'query>> {
+    // let lhs = eval_context.query(lhs_query)?;
+    let results = cmp.compare(lhs, rhs)?;
     match results {
         operators::EvalResult::Skip => return Ok(EvaluationResult::EmptyQueryResult(Status::SKIP)),
         operators::EvalResult::Result(results) => {
@@ -805,7 +891,6 @@ fn binary_operation<'value, 'loc: 'value>(
                         )?;
                         statues.push((QueryResult::UnResolved(ur), Status::FAIL));
                     }
-
                     operators::ValueEvalResult::ComparisonResult(
                         operators::ComparisonResult::RhsUnresolved(urhs, lhs),
                     ) => {
@@ -977,18 +1062,6 @@ fn binary_operation<'value, 'loc: 'value>(
             Ok(EvaluationResult::QueryValueResult(statues))
         }
     }
-
-    //    if lhs.is_empty() || rhs.is_empty() {
-    //        return Ok(EvaluationResult::EmptyQueryResult(Status::SKIP))
-    //    }
-    //    real_binary_operation(
-    //        &lhs,
-    //        rhs,
-    //        cmp,
-    //        context,
-    //        custom_message,
-    //        eval_context
-    //    )
 }
 
 pub(super) fn real_binary_operation<'value, 'loc: 'value>(
@@ -1073,13 +1146,14 @@ pub(super) fn real_binary_operation<'value, 'loc: 'value>(
                     }
                 }
             }
+            QueryResult::Computed(_) => todo!(),
         };
     }
     Ok(EvaluationResult::QueryValueResult(statues))
 }
 
 #[allow(clippy::never_loop)]
-pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
+fn handle_unary<'value, 'loc: 'value>(
     gac: &'value GuardAccessClause<'loc>,
     resolver: &mut dyn EvalContext<'value, 'loc>,
 ) -> Result<Status> {
@@ -1087,63 +1161,143 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
     let blk_context = format!("GuardAccessClause#block{}", gac);
     resolver.start_record(&blk_context)?;
 
-    let statues = if gac.access_clause.comparator.0.is_unary() {
-        unary_operation(
-            &gac.access_clause.query.query,
-            gac.access_clause.comparator,
-            gac.negation,
-            format!("{}", gac),
-            gac.access_clause.custom_message.clone(),
-            resolver,
-        )
-    } else {
-        let (rhs, ..) = match &gac.access_clause.compare_with {
-            Some(val) => match val {
-                LetValue::Value(rhs_val) => (vec![QueryResult::Literal(rhs_val)], true),
-                LetValue::AccessClause(acc_query) => match resolver.query(&acc_query.query) {
-                    Ok(result) => (result, false),
-                    Err(e) => {
-                        resolver.end_record(
-                            &blk_context,
-                            RecordType::GuardClauseBlockCheck(BlockCheck {
-                                status: Status::FAIL,
-                                at_least_one_matches: !all,
-                                message: Some(format!("Error {e} when handling clause, bailing")),
-                            }),
-                        )?;
-                        return Err(e);
-                    }
-                },
-                LetValue::FunctionCall(_) => todo!(),
-            },
+    let statuses = unary_operation(
+        &gac.access_clause.query.query,
+        gac.access_clause.comparator,
+        gac.negation,
+        format!("{}", gac),
+        gac.access_clause.custom_message.clone(),
+        resolver,
+    );
 
-            None => {
+    match statuses {
+        Ok(statues) => match statues {
+            EvaluationResult::EmptyQueryResult(status) => {
                 resolver.end_record(
                     &blk_context,
                     RecordType::GuardClauseBlockCheck(BlockCheck {
-                        status: Status::FAIL,
-                        at_least_one_matches: !all,
-                        message: Some(
-                            "Error not RHS for binary clause when handling clause, bailing"
-                                .to_string(),
-                        ),
+                        status,
+                        message: None,
+                        at_least_one_matches: all,
                     }),
                 )?;
-                return Err(Error::NotComparable(format!(
-                    "GuardAccessClause {}, did not have a RHS for compare operation",
-                    blk_context
-                )));
+                Ok(status)
             }
-        };
-        binary_operation(
-            &gac.access_clause.query.query,
-            &rhs,
-            gac.access_clause.comparator,
-            format!("{}", gac),
-            gac.access_clause.custom_message.clone(),
-            resolver,
-        )
+            EvaluationResult::QueryValueResult(result) => {
+                let outcome = loop {
+                    let mut fails = 0;
+                    let mut pass = 0;
+                    for (_value, status) in result {
+                        match status {
+                            Status::PASS => {
+                                pass += 1;
+                            }
+                            Status::FAIL => {
+                                fails += 1;
+                            }
+                            Status::SKIP => unreachable!(),
+                        }
+                    }
+                    if all {
+                        if fails > 0 {
+                            break Status::FAIL;
+                        }
+                        break Status::PASS;
+                    } else {
+                        if pass > 0 {
+                            break Status::PASS;
+                        }
+                        break Status::FAIL;
+                    }
+                };
+                resolver.end_record(
+                    &blk_context,
+                    RecordType::GuardClauseBlockCheck(BlockCheck {
+                        message: None,
+                        status: outcome,
+                        at_least_one_matches: !all,
+                    }),
+                )?;
+                Ok(outcome)
+            }
+        },
+
+        Err(e) => {
+            resolver.end_record(
+                &blk_context,
+                RecordType::GuardClauseBlockCheck(BlockCheck {
+                    status: Status::FAIL,
+                    at_least_one_matches: !all,
+                    message: Some(format!("Error {e} when handling clause, bailing")),
+                }),
+            )?;
+            Err(e)
+        }
+    }
+}
+
+#[allow(clippy::never_loop)]
+pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
+    gac: &'value GuardAccessClause<'loc>,
+    resolver: &mut dyn EvalContext<'value, 'loc>,
+) -> Result<Status> {
+    if gac.access_clause.comparator.0.is_unary() {
+        return handle_unary(gac, resolver);
+    }
+
+    let all = gac.access_clause.query.match_all;
+    let blk_context = format!("GuardAccessClause#block{}", gac);
+    resolver.start_record(&blk_context)?;
+
+    let rhs = match &gac.access_clause.compare_with {
+        Some(val) => match val {
+            LetValue::Value(rhs_val) => vec![QueryResult::Literal(rhs_val)],
+            LetValue::AccessClause(acc_query) => match resolver.query(&acc_query.query) {
+                Ok(result) => result,
+                Err(e) => {
+                    resolver.end_record(
+                        &blk_context,
+                        RecordType::GuardClauseBlockCheck(BlockCheck {
+                            status: Status::FAIL,
+                            at_least_one_matches: !all,
+                            message: Some(format!("Error {e} when handling clause, bailing")),
+                        }),
+                    )?;
+                    return Err(e);
+                }
+            },
+            LetValue::FunctionCall(_) => todo!(),
+        },
+
+        None => {
+            resolver.end_record(
+                &blk_context,
+                RecordType::GuardClauseBlockCheck(BlockCheck {
+                    status: Status::FAIL,
+                    at_least_one_matches: !all,
+                    message: Some(
+                        "Error not RHS for binary clause when handling clause, bailing".to_string(),
+                    ),
+                }),
+            )?;
+            return Err(Error::NotComparable(format!(
+                "GuardAccessClause {}, did not have a RHS for compare operation",
+                blk_context
+            )));
+        }
     };
+
+    let lhs = resolver.query(&gac.access_clause.query.query)?;
+    // let results = gac.access_clause.comparator.compare(&lhs, &rhs)?;
+    let statues = binary_operation(
+        &lhs,
+        // &gac.access_clause.query.query,
+        &rhs,
+        gac.access_clause.comparator,
+        format!("{}", gac),
+        gac.access_clause.custom_message.clone(),
+        resolver,
+    );
 
     match statues {
         Ok(statues) => match statues {
@@ -1162,7 +1316,7 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
                 let outcome = loop {
                     let mut fails = 0;
                     let mut pass = 0;
-                    for (_value, status) in result {
+                    for (_, status) in result {
                         match status {
                             Status::PASS => {
                                 pass += 1;
@@ -1382,6 +1536,7 @@ pub(in crate::rules) fn eval_guard_block_clause<'value, 'loc: 'value>(
                     }
                 }
             }
+            QueryResult::Computed(_) => todo!(),
         }
     }
 
@@ -1755,6 +1910,7 @@ pub(in crate::rules) fn eval_type_block_clause<'value, 'loc: 'value>(
             }
 
             QueryResult::UnResolved(_) => unreachable!(),
+            QueryResult::Computed(_) => todo!(),
         }
     }
 

@@ -4536,3 +4536,62 @@ fn test_parse_value_when_strings_are_randomly_generated() {
         assert!(parse_value(cmp).is_err())
     }
 }
+
+#[test]
+fn test_parse_assignment_with_function_call() {
+    let input = "let num = count(%s3_buckets_bucket_logging_enabled)";
+
+    let res = assignment(from_str2(input)).unwrap();
+
+    assert_eq!(res.1.var, "num");
+
+    let function = res.1.value;
+    assert!(matches!(function, LetValue::FunctionCall(_)));
+
+    if let LetValue::FunctionCall(function) = function {
+        assert_eq!(function.name, "count");
+        assert_eq!(function.parameters.len(), 1);
+        assert!(matches!(function.parameters[0], LetValue::AccessClause(_)));
+    }
+}
+
+#[test]
+fn test_parse_assignment_with_function_call2() {
+    let value_str = r#"
+    Resources:
+      newServ:
+        Type: AWS:🆕:Service
+        Properties:
+          Policy: |
+            {
+               “Principal”: “*”,
+               “Actions”: [“s3*“, “ec2*“]
+            }
+          Arn: arn:aws:newservice:us-west-2:123456789012:Table/extracted
+      s3:
+         Type: AWS::S3::Bucket
+    ""#;
+
+    let input = r#"let num = regex_replace(%s3_buckets_bucket_logging_enabled, "^arn:(\\w+):(\\w+):([\\w0-9-]+):(\\d+):(.+)$", "${1}/${4}/${3}/${2}-${5}")"#;
+    let res = assignment(from_str2(input)).unwrap();
+
+    assert_eq!(res.1.var, "num");
+
+    let function = res.1.value;
+    assert!(matches!(function, LetValue::FunctionCall(_)));
+
+    if let LetValue::FunctionCall(function) = function {
+        assert_eq!(function.name, "regex_replace");
+        assert_eq!(function.parameters.len(), 3);
+        assert!(matches!(
+            function.parameters[1],
+            LetValue::Value(PathAwareValue::String(_))
+        ));
+        assert!(matches!(
+            function.parameters[2],
+            LetValue::Value(PathAwareValue::String(_))
+        ));
+        assert_eq!(function.parameters.len(), 3);
+        assert!(matches!(function.parameters[0], LetValue::AccessClause(_)));
+    }
+}

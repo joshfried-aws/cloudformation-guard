@@ -184,6 +184,17 @@ pub(crate) fn join(
                     ur.traversed_to, ur.remaining_query
                 )));
             }
+            QueryResult::Computed(v) => {
+                if let PathAwareValue::String((_, val)) = v {
+                    aggr.push_str(delimiter);
+                    aggr.push_str(val);
+                } else {
+                    return Err(Error::IncompatibleError(format!(
+                        "Joining non string values {}",
+                        v
+                    )));
+                }
+            }
         }
     }
     Ok(PathAwareValue::String((Path::root(), aggr)))

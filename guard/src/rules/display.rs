@@ -119,6 +119,9 @@ impl<'value> Display for QueryResult<'value> {
             QueryResult::UnResolved(ur) => {
                 f.write_fmt(format_args!("(unresolved, {})", ur.traversed_to))?;
             }
+            QueryResult::Computed(c) => {
+                f.write_fmt(format_args!("(computed, {})", c))?;
+            }
         }
         Ok(())
     }

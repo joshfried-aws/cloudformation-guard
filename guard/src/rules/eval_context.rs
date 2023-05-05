@@ -1,9 +1,13 @@
 use crate::rules::errors::Error;
 use crate::rules::exprs::{
-    AccessQuery, Block, Conjunctions, GuardClause, LetExpr, LetValue, ParameterizedRule, QueryPart,
-    Rule, RulesFile, SliceDisplay,
+    AccessQuery, Block, Conjunctions, FunctionExpr, GuardClause, LetExpr, LetValue,
+    ParameterizedRule, QueryPart, Rule, RulesFile, SliceDisplay,
 };
-use crate::rules::path_value::{MapValue, PathAwareValue};
+use crate::rules::functions::collections::count;
+use crate::rules::functions::strings::{
+    join, json_parse, regex_replace, substring, to_lower, to_upper, url_decode,
+};
+use crate::rules::path_value::{MapValue, Path, PathAwareValue};
 use crate::rules::values::CmpOperator;
 use crate::rules::Result;
 use crate::rules::Status::SKIP;
@@ -22,6 +26,7 @@ pub(crate) struct Scope<'value, 'loc: 'value> {
     resolved_variables: HashMap<&'value str, Vec<QueryResult<'value>>>,
     literals: HashMap<&'value str, &'value PathAwareValue>,
     variable_queries: HashMap<&'value str, &'value AccessQuery<'loc>>,
+    function_expressions: HashMap<&'value str, &'value FunctionExpr<'loc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
@@ -47,6 +52,7 @@ impl<'value, 'loc: 'value> RootScope<'value, 'loc> {
             self.scope.variable_queries,
             self.rules,
             self.parameterized_rules,
+            self.scope.function_expressions,
             new_root,
         )
     }
@@ -75,6 +81,7 @@ pub(crate) struct ValueScope<'value, 'eval, 'loc: 'value> {
 type ExtractVariableResult<'value, 'loc> = Result<(
     HashMap<&'value str, &'value PathAwareValue>,
     HashMap<&'value str, &'value AccessQuery<'loc>>,
+    HashMap<&'value str, &'value FunctionExpr<'loc>>,
 )>;
 
 fn extract_variables<'value, 'loc: 'value>(
@@ -82,6 +89,7 @@ fn extract_variables<'value, 'loc: 'value>(
 ) -> ExtractVariableResult<'value, 'loc> {
     let mut literals = HashMap::with_capacity(expressions.len());
     let mut queries = HashMap::with_capacity(expressions.len());
+    let mut functions = HashMap::with_capacity(expressions.len());
     for each in expressions {
         match &each.value {
             LetValue::Value(v) => {
@@ -92,10 +100,12 @@ fn extract_variables<'value, 'loc: 'value>(
                 queries.insert(each.var.as_str(), query);
             }
 
-            LetValue::FunctionCall(_) => todo!(),
+            LetValue::FunctionCall(function) => {
+                functions.insert(each.var.as_str(), function);
+            }
         }
     }
-    Ok((literals, queries))
+    Ok((literals, queries, functions))
 }
 
 fn retrieve_index<'value>(
@@ -351,6 +361,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         resolved.push(each)
                     }
                 }
+                QueryResult::Computed(_) => todo!(),
             }
         }
         return Ok(resolved);
@@ -492,6 +503,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             ));
                                     }
                                 }
+                                QueryResult::Computed(_) => todo!(),
                             }
                         }
                         Ok(acc)
@@ -867,6 +879,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         QueryResult::UnResolved(ur) => {
                             extended.push(QueryResult::UnResolved(ur));
                         }
+                        QueryResult::Computed(_) => todo!(),
                     }
                 }
                 Ok(extended)
@@ -889,7 +902,7 @@ pub(crate) fn root_scope<'value, 'loc: 'value>(
     rules_file: &'value RulesFile<'loc>,
     root: &'value PathAwareValue,
 ) -> Result<RootScope<'value, 'loc>> {
-    let (literals, queries) = extract_variables(&rules_file.assignments)?;
+    let (literals, queries, function_expressions) = extract_variables(&rules_file.assignments)?;
     let mut lookup_cache = HashMap::with_capacity(rules_file.guard_rules.len());
     for rule in &rules_file.guard_rules {
         lookup_cache
@@ -902,7 +915,14 @@ pub(crate) fn root_scope<'value, 'loc: 'value>(
     for pr in rules_file.parameterized_rules.iter() {
         parameterized_rules.insert(pr.rule.rule_name.as_str(), pr);
     }
-    root_scope_with(literals, queries, lookup_cache, parameterized_rules, root)
+    root_scope_with(
+        literals,
+        queries,
+        lookup_cache,
+        parameterized_rules,
+        function_expressions,
+        root,
+    )
 }
 
 pub(crate) fn root_scope_with<'value, 'loc: 'value>(
@@ -910,6 +930,7 @@ pub(crate) fn root_scope_with<'value, 'loc: 'value>(
     queries: HashMap<&'value str, &'value AccessQuery<'loc>>,
     lookup_cache: HashMap<&'value str, Vec<&'value Rule<'loc>>>,
     parameterized_rules: HashMap<&'value str, &'value ParameterizedRule<'loc>>,
+    function_expressions: HashMap<&'value str, &'value FunctionExpr<'loc>>,
     root: &'value PathAwareValue,
 ) -> Result<RootScope<'value, 'loc>> {
     Ok(RootScope {
@@ -918,6 +939,7 @@ pub(crate) fn root_scope_with<'value, 'loc: 'value>(
             literals,
             variable_queries: queries,
             //resolved_variables: std::cell::RefCell::new(HashMap::new()),
+            function_expressions,
             resolved_variables: HashMap::new(),
         },
         rules: lookup_cache,
@@ -935,7 +957,7 @@ pub(crate) fn block_scope<'value, 'block, 'loc: 'value, 'eval, T>(
     root: &'value PathAwareValue,
     parent: &'eval mut dyn EvalContext<'value, 'loc>,
 ) -> Result<BlockScope<'value, 'loc, 'eval>> {
-    let (literals, variable_queries) = extract_variables(&block.assignments)?;
+    let (literals, variable_queries, function_expressions) = extract_variables(&block.assignments)?;
     Ok(BlockScope {
         scope: Scope {
             literals,
@@ -943,6 +965,7 @@ pub(crate) fn block_scope<'value, 'block, 'loc: 'value, 'eval, T>(
             root,
             //resolved_variables: std::cell::RefCell::new(HashMap::new()),
             resolved_variables: HashMap::new(),
+            function_expressions,
         },
         parent,
     })
@@ -1074,6 +1097,40 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
             return Ok(values.clone());
         }
 
+        if let Some(FunctionExpr {
+            parameters, name, ..
+        }) = self.scope.function_expressions.get(variable_name)
+        {
+            let args = parameters.iter().try_fold(
+                vec![],
+                |mut args, param| -> Result<Vec<QueryResult>> {
+                    match param {
+                        LetValue::Value(value) => args.push(QueryResult::Literal(value)),
+                        LetValue::AccessClause(clause) => {
+                            let resolved_query = self.query(&clause.query)?;
+                            args.extend(resolved_query);
+                        }
+                        // TODO: do we want to allow for function expressions to be params?
+                        _ => todo!(),
+                    }
+
+                    Ok(args)
+                },
+            )?;
+
+            let result = try_handle_function_call(name, &args)?
+                .into_iter()
+                .flatten()
+                .map(QueryResult::Computed)
+                .collect::<Vec<_>>();
+
+            self.scope
+                .resolved_variables
+                .insert(variable_name, result.clone());
+
+            return Ok(result);
+        }
+
         let query = match self.scope.variable_queries.get(variable_name) {
             Some(val) => val,
             None => {
@@ -1113,6 +1170,109 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
             .push(QueryResult::Resolved(key));
         Ok(())
     }
+}
+
+fn try_handle_function_call(
+    fn_name: &str,
+    args: &[QueryResult],
+) -> Result<Vec<Option<PathAwareValue>>> {
+    let value = match fn_name {
+        "count" => vec![Some(PathAwareValue::Int((
+            Path::root(),
+            count(args) as i64,
+        )))],
+        "json_parse" => json_parse(args)?,
+        "regex_replace" => match args.len() {
+            0..=2 => {
+                return Err(Error::ParseError(String::from(
+                    "regex_replace function requires 3 arguments",
+                )))
+            }
+
+            num => {
+                // TODO: Verify the validation for this function call
+                if !matches!(args[0], QueryResult::Resolved(_)) {
+                    // NOTE: not sure if this is
+                    // necessary
+                    return Err(Error::ParseError(String::from("regex_replace function requires the first argument to be variable, but received a literal")));
+                }
+
+                let extracted_expr = match args[num-2] {
+                    QueryResult::Literal(PathAwareValue::String((_, s))) => s,
+                    QueryResult::Resolved(PathAwareValue::String((_, s))) => s,
+                    _ => return Err(Error::ParseError(String::from("regex_replace function requires the second argument to be string literal, but received a variable")))
+                };
+
+                let replaced_expr = match args[num-1] {
+                    QueryResult::Literal(PathAwareValue::String((_, s))) | QueryResult::Resolved(PathAwareValue::String((_, s))) => s,
+                    _ => return Err(Error::ParseError(String::from("regex_replace function requires the third argument to be string literal, but received a variable")))
+                };
+
+                regex_replace(&args[0..num - 2], extracted_expr, replaced_expr)?
+            }
+        },
+        "substring" => match args.len() {
+            0..=2 => {
+                return Err(Error::ParseError(String::from(
+                    "substring function requires 3 arguments",
+                )))
+            }
+
+            num => {
+                let from = match args[num - 2] {
+                    QueryResult::Resolved(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
+                    QueryResult::Resolved(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
+                    QueryResult::Literal(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
+                    QueryResult::Literal(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
+                    _ => {
+                        return Err(Error::ParseError(String::from(
+                            "substring function requires the second argument to be a number",
+                        )))
+                    }
+                };
+
+                let to = match args[num - 1] {
+                    QueryResult::Resolved(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
+                    QueryResult::Resolved(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
+                    QueryResult::Literal(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
+                    QueryResult::Literal(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
+                    _ => {
+                        return Err(Error::ParseError(String::from(
+                            "substring function requires the third argument to be a number",
+                        )))
+                    }
+                };
+
+                substring(&args[0..num - 2], from, to)?
+            }
+        },
+        "to_upper" => to_upper(args)?,
+        "to_lower" => to_lower(args)?,
+        "join" => match args.len() {
+            0..=1 => {
+                return Err(Error::ParseError(String::from(
+                    "join function requires 2 arguments",
+                )))
+            }
+            num => {
+                let delimiter =
+                    match args[num - 1] {
+                        QueryResult::Literal(PathAwareValue::String((_, s))) => s,
+                        QueryResult::Resolved(PathAwareValue::String((_, s))) => s,
+
+                        _ => return Err(Error::ParseError(String::from(
+                            "join function requires the 2nd argument to be either a char or string",
+                        ))),
+                    };
+
+                vec![Some(join(&args[0..num - 1], delimiter)?)]
+            }
+        },
+        "url_decode" => url_decode(args)?,
+        function => return Err(Error::ParseError(format!("No function named {function}"))),
+    };
+
+    Ok(value)
 }
 
 impl<'value, 'loc: 'value> RecordTracer<'value> for RootScope<'value, 'loc> {
@@ -1771,6 +1931,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     })
                                 )
                             }
+                        QueryResult::Computed(_) => todo!(),
                         };
 
                     clauses.push(ClauseReport::Clause(GuardClauseReport::Unary(
@@ -1882,9 +2043,11 @@ fn report_all_failed_clauses_for_rules<'value>(
                                             }),
                                         ));
                                     }
+                                    QueryResult::Computed(_) => todo!(),
                                 }
                             }
                         }
+                        QueryResult::Computed(_) => todo!(),
                     }
                 }
 
@@ -1920,6 +2083,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                         QueryResult::Resolved(v) => v,
                                         QueryResult::UnResolved(ur) => ur.traversed_to,
                                         QueryResult::Literal(l) => *l,
+                                        QueryResult::Computed(_) => todo!(),
                                     })
                                     .collect(),
                                 comparison: *comparison,

@@ -10,6 +10,7 @@ use crate::rules::values::CmpOperator;
 use crate::rules::{
     ClauseCheck, EvaluationType, NamedStatus, QueryResult, RecordType, Status, UnResolved,
 };
+
 use fancy_regex::Regex;
 use lazy_static::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -234,6 +235,24 @@ pub(super) fn extract_name_info_from_record<'record>(
             }
 
             QueryResult::Literal(_) => unreachable!(),
+            // TODO: verify if this is actually what we want here....but i think this would make
+            // sense since these computed values will also be accessed using % query's
+            QueryResult::Computed(computed) => {
+                let (path, provided): (String, serde_json::Value) = computed.try_into()?;
+                NameInfo {
+                    rule: rule_name,
+                    comparison: Some(check.comparison.into()),
+                    error: check.value.message.clone(),
+                    message: check
+                        .value
+                        .custom_message
+                        .as_ref()
+                        .map_or(String::default(), |msg| msg.clone()),
+                    provided: Some(provided),
+                    path,
+                    ..Default::default()
+                }
+            }
         },
 
         Some(RecordType::ClauseValueCheck(ClauseCheck::Comparison(check))) => match &check.from {
@@ -246,6 +265,7 @@ pub(super) fn extract_name_info_from_record<'record>(
                         QueryResult::Literal(_) => unreachable!(),
                         QueryResult::Resolved(v) => Some((*v).try_into()?),
                         QueryResult::UnResolved(ur) => Some(ur.traversed_to.try_into()?),
+                        QueryResult::Computed(v) => Some(v.try_into()?),
                     },
                     None => None,
                 };
@@ -285,6 +305,33 @@ pub(super) fn extract_name_info_from_record<'record>(
                     ..Default::default()
                 }
             }
+            QueryResult::Computed(computed) => {
+                let (path, provided): (String, serde_json::Value) = computed.try_into()?;
+                let expected: Option<(String, serde_json::Value)> = match &check.to {
+                    Some(to) => match to {
+                        QueryResult::Literal(_) => unreachable!(),
+                        QueryResult::Resolved(v) => Some((*v).try_into()?),
+                        QueryResult::UnResolved(ur) => Some(ur.traversed_to.try_into()?),
+                        QueryResult::Computed(v) => Some(v.try_into()?),
+                    },
+                    None => None,
+                };
+
+                let expected = expected.map(|(_, ex)| ex);
+
+                NameInfo {
+                    rule: rule_name,
+                    comparison: Some(check.comparison.into()),
+                    error: check.message.clone(),
+                    message: check
+                        .custom_message
+                        .as_ref()
+                        .map_or("".to_string(), |msg| msg.clone()),
+                    provided: Some(provided),
+                    expected,
+                    path,
+                }
+            }
         },
 
         Some(RecordType::ClauseValueCheck(ClauseCheck::NoValueForEmptyCheck(msg))) => NameInfo {
@@ -311,6 +358,7 @@ pub(super) fn extract_name_info_from_record<'record>(
                     QueryResult::Literal(l) => (*l).try_into()?,
                     QueryResult::Resolved(v) => (*v).try_into()?,
                     QueryResult::UnResolved(ur) => ur.traversed_to.try_into()?,
+                    QueryResult::Computed(c) => c.try_into()?,
                 };
                 to.push(expected);
             }
