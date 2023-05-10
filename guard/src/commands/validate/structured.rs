@@ -17,6 +17,11 @@ pub struct StructuredEvaluator<'eval> {
     pub(crate) exit_code: i32,
 }
 
+struct FileData {
+    data: PathAwareValue,
+    file_name: String,
+}
+
 impl<'eval> StructuredEvaluator<'eval> {
     fn merge_input_params_with_data(&mut self) -> Vec<PathAwareValue> {
         self.data.iter().fold(vec![], |mut res, file| {

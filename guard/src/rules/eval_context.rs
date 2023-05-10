@@ -78,6 +78,53 @@ pub(crate) struct ValueScope<'value, 'eval, 'loc: 'value> {
     pub(crate) parent: &'eval mut dyn EvalContext<'value, 'loc>,
 }
 
+pub(crate) struct TestScope<'value, 'eval, 'loc: 'value> {
+    pub(crate) parent: &'eval mut dyn EvalContext<'value, 'loc>,
+}
+
+impl<'value, 'loc: 'value, 'eval> RecordTracer<'value> for TestScope<'value, 'eval, 'loc> {
+    fn start_record(&mut self, context: &str) -> Result<()> {
+        self.parent.start_record(context)
+    }
+
+    fn end_record(&mut self, context: &str, record: RecordType<'value>) -> Result<()> {
+        self.parent.end_record(context, record)
+    }
+}
+
+impl<'value, 'loc: 'value, 'eval> EvalContext<'value, 'loc> for TestScope<'value, 'eval, 'loc> {
+    fn query(&mut self, query: &'value [QueryPart<'loc>]) -> Result<Vec<QueryResult<'value>>> {
+        self.parent.query(query)
+    }
+
+    fn find_parameterized_rule(
+        &mut self,
+        rule_name: &str,
+    ) -> Result<&'value ParameterizedRule<'loc>> {
+        self.parent.find_parameterized_rule(rule_name)
+    }
+
+    fn root(&mut self) -> &'value PathAwareValue {
+        self.parent.root()
+    }
+
+    fn rule_status(&mut self, rule_name: &'value str) -> Result<Status> {
+        self.parent.rule_status(rule_name)
+    }
+
+    fn resolve_variable(&mut self, variable_name: &'value str) -> Result<Vec<QueryResult<'value>>> {
+        self.parent.resolve_variable(variable_name)
+    }
+
+    fn add_variable_capture_key(
+        &mut self,
+        variable_name: &'value str,
+        key: &'value PathAwareValue,
+    ) -> Result<()> {
+        self.parent.add_variable_capture_key(variable_name, key)
+    }
+}
+
 type ExtractVariableResult<'value, 'loc> = Result<(
     HashMap<&'value str, &'value PathAwareValue>,
     HashMap<&'value str, &'value AccessQuery<'loc>>,

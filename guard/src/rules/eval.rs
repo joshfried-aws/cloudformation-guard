@@ -1,6 +1,6 @@
 use super::exprs::*;
 use super::*;
-use crate::rules::eval::operators::Comparator;
+use crate::rules::eval::operators::{Comparator, EvalResult};
 use crate::rules::eval_context::{block_scope, ValueScope};
 use crate::rules::path_value::compare_eq;
 use std::collections::HashMap;
@@ -238,8 +238,8 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
                             (
                                 QueryResult::UnResolved(ur),
                                 match cmp.1 {
-                                    true => Status::FAIL,  // !EXISTS == EMPTY, so !EMPTY == FAIL
-                                    false => Status::PASS, // !EXISTS == EMPTY so PASS
+                                    true => Status::FAIL,  // !EISTS == EMPTY, so !EMPTY == FAIL
+                                    false => Status::PASS, // !EISTS == EMPTY so PASS
                                 },
                             )
                         }
@@ -860,14 +860,16 @@ where
 fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
     lhs: &'query [QueryResult<'value>],
     // lhs_query: &'value
-    rhs: &'query [QueryResult<'value>],
+    // rhs: &'query [QueryResult<'value>],
+    results: EvalResult<'query>,
     cmp: (CmpOperator, bool),
     context: String,
     custom_message: Option<String>,
     eval_context: &mut dyn EvalContext<'value, 'loc>,
 ) -> Result<EvaluationResult<'query>> {
     // let lhs = eval_context.query(lhs_query)?;
-    let results = cmp.compare(lhs, rhs)?;
+    // let results = cmp.compare(lhs, rhs)?;
+
     match results {
         operators::EvalResult::Skip => return Ok(EvaluationResult::EmptyQueryResult(Status::SKIP)),
         operators::EvalResult::Result(results) => {
@@ -1288,11 +1290,13 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
     };
 
     let lhs = resolver.query(&gac.access_clause.query.query)?;
-    // let results = gac.access_clause.comparator.compare(&lhs, &rhs)?;
+    let results = gac.access_clause.comparator.compare(&lhs, &rhs)?;
+
     let statues = binary_operation(
         &lhs,
+        results,
         // &gac.access_clause.query.query,
-        &rhs,
+        // &rhs,
         gac.access_clause.comparator,
         format!("{}", gac),
         gac.access_clause.custom_message.clone(),

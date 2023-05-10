@@ -140,7 +140,7 @@ struct CommonOperator {
 struct EqOperation {}
 struct InOperation {}
 
-fn selected<'query, 'value, U, R>(
+fn selected<'query, 'value: 'query, U, R>(
     query_results: &'query [QueryResult<'value>],
     mut c: U,
     mut r: R,
