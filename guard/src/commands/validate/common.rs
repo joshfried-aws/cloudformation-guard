@@ -215,7 +215,7 @@ pub(super) fn extract_name_info_from_record<'record>(
 
             QueryResult::UnResolved(unres) => {
                 let (path, provided): (String, serde_json::Value) =
-                    unres.traversed_to.try_into()?;
+                    unres.traversed_to.clone().try_into()?;
                 NameInfo {
                     rule: rule_name,
                     comparison: Some(check.comparison.into()),
@@ -264,7 +264,7 @@ pub(super) fn extract_name_info_from_record<'record>(
                     Some(to) => match to {
                         QueryResult::Literal(_) => unreachable!(),
                         QueryResult::Resolved(v) => Some((*v).try_into()?),
-                        QueryResult::UnResolved(ur) => Some(ur.traversed_to.try_into()?),
+                        QueryResult::UnResolved(ur) => Some(ur.traversed_to.clone().try_into()?),
                         QueryResult::Computed(v) => Some(v.try_into()?),
                     },
                     None => None,
@@ -288,7 +288,7 @@ pub(super) fn extract_name_info_from_record<'record>(
 
             QueryResult::UnResolved(unres) => {
                 let (path, provided): (String, serde_json::Value) =
-                    unres.traversed_to.try_into()?;
+                    unres.traversed_to.clone().try_into()?;
                 NameInfo {
                     rule: rule_name,
                     comparison: Some(check.comparison.into()),
@@ -311,7 +311,7 @@ pub(super) fn extract_name_info_from_record<'record>(
                     Some(to) => match to {
                         QueryResult::Literal(_) => unreachable!(),
                         QueryResult::Resolved(v) => Some((*v).try_into()?),
-                        QueryResult::UnResolved(ur) => Some(ur.traversed_to.try_into()?),
+                        QueryResult::UnResolved(ur) => Some(ur.traversed_to.clone().try_into()?),
                         QueryResult::Computed(v) => Some(v.try_into()?),
                     },
                     None => None,
@@ -357,7 +357,7 @@ pub(super) fn extract_name_info_from_record<'record>(
                 let (_, expected): (String, serde_json::Value) = match each {
                     QueryResult::Literal(l) => (*l).try_into()?,
                     QueryResult::Resolved(v) => (*v).try_into()?,
-                    QueryResult::UnResolved(ur) => ur.traversed_to.try_into()?,
+                    QueryResult::UnResolved(ur) => ur.traversed_to.clone().try_into()?,
                     QueryResult::Computed(c) => c.try_into()?,
                 };
                 to.push(expected);

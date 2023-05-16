@@ -877,6 +877,12 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
             for each in results {
                 match each {
                     operators::ValueEvalResult::LhsUnresolved(ur) => {
+                        let UnResolved {
+                            traversed_to,
+                            remaining_query,
+                            reason,
+                        } = ur.clone();
+
                         eval_context.start_record(&context)?;
                         eval_context.end_record(
                             &context,
@@ -886,16 +892,34 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                     message: None,
                                     custom_message: custom_message.clone(),
                                     comparison: cmp,
-                                    from: QueryResult::UnResolved(ur.clone()),
+                                    from: QueryResult::UnResolved(UnResolved {
+                                        traversed_to: TraversedTo::Owned(
+                                            traversed_to.inner().clone(),
+                                        ),
+                                        remaining_query: remaining_query.clone(),
+                                        reason: reason.clone(),
+                                    }),
                                     to: None,
                                 },
                             )),
                         )?;
-                        statues.push((QueryResult::UnResolved(ur), Status::FAIL));
+                        statues.push((
+                            QueryResult::UnResolved(UnResolved {
+                                traversed_to: traversed_to.clone(),
+                                remaining_query: remaining_query.clone(),
+                                reason: reason.clone(),
+                            }),
+                            Status::FAIL,
+                        ));
                     }
                     operators::ValueEvalResult::ComparisonResult(
                         operators::ComparisonResult::RhsUnresolved(urhs, lhs),
                     ) => {
+                        let UnResolved {
+                            traversed_to,
+                            remaining_query,
+                            reason,
+                        } = urhs.clone();
                         eval_context.start_record(&context)?;
                         eval_context.end_record(
                             &context,
@@ -905,8 +929,14 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                     message: None,
                                     custom_message: custom_message.clone(),
                                     comparison: cmp,
-                                    from: QueryResult::Resolved(lhs),
-                                    to: Some(QueryResult::UnResolved(urhs)),
+                                    from: QueryResult::Computed(lhs.clone()),
+                                    to: Some(QueryResult::UnResolved(UnResolved {
+                                        traversed_to: TraversedTo::Owned(
+                                            traversed_to.inner().clone(),
+                                        ),
+                                        remaining_query: remaining_query.clone(),
+                                        reason: reason.clone(),
+                                    })),
                                 },
                             )),
                         )?;
@@ -925,8 +955,8 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                     message: Some(nc.reason),
                                     custom_message: custom_message.clone(),
                                     comparison: cmp,
-                                    from: QueryResult::Resolved(nc.pair.lhs),
-                                    to: Some(QueryResult::Resolved(nc.pair.rhs)),
+                                    from: QueryResult::Computed(nc.pair.lhs.clone()),
+                                    to: Some(QueryResult::Computed(nc.pair.rhs.clone())),
                                 },
                             )),
                         )?;
@@ -988,8 +1018,8 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                         message: None,
                                         custom_message: custom_message.clone(),
                                         comparison: cmp,
-                                        from: QueryResult::Resolved(pair.lhs),
-                                        to: Some(QueryResult::Resolved(pair.rhs)),
+                                        from: QueryResult::Computed(pair.lhs.clone()),
+                                        to: Some(QueryResult::Computed(pair.rhs.clone())),
                                     },
                                 )),
                             )?;
@@ -1006,8 +1036,8 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                         message: None,
                                         custom_message: custom_message.clone(),
                                         comparison: cmp,
-                                        from: QueryResult::Resolved(pair.lhs),
-                                        to: vec![QueryResult::Resolved(pair.rhs)],
+                                        from: QueryResult::Computed(pair.lhs.clone()),
+                                        to: vec![QueryResult::Computed(pair.rhs.clone())],
                                     },
                                 )),
                             )?;
@@ -1024,8 +1054,8 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                         message: None,
                                         custom_message: custom_message.clone(),
                                         comparison: cmp,
-                                        from: QueryResult::Resolved(lin.lhs),
-                                        to: vec![QueryResult::Resolved(lin.rhs)],
+                                        from: QueryResult::Computed(lin.lhs.clone()),
+                                        to: vec![QueryResult::Computed(lin.rhs.clone())],
                                     },
                                 )),
                             )?;
@@ -1035,8 +1065,8 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                         operators::Compare::QueryIn(qin) => {
                             let rhs = qin
                                 .rhs
-                                .iter()
-                                .map(|e| QueryResult::Resolved(e))
+                                .into_iter()
+                                .map(|e| QueryResult::Computed(e.to_owned()))
                                 .collect::<Vec<_>>();
                             for lhs in qin.diff {
                                 eval_context.start_record(&context)?;
@@ -1048,7 +1078,7 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                             message: None,
                                             custom_message: custom_message.clone(),
                                             comparison: cmp,
-                                            from: QueryResult::Resolved(lhs),
+                                            from: QueryResult::Computed(lhs.clone()),
                                             to: rhs.clone(),
                                         },
                                     )),

@@ -9,8 +9,8 @@ use crate::rules::functions::strings::{
 };
 use crate::rules::path_value::{MapValue, Path, PathAwareValue};
 use crate::rules::values::CmpOperator;
-use crate::rules::Result;
 use crate::rules::Status::SKIP;
+use crate::rules::{self, Result};
 use crate::rules::{
     BlockCheck, ClauseCheck, ComparisonClauseCheck, EvalContext, InComparisonCheck, NamedStatus,
     QueryResult, RecordTracer, RecordType, Status, TypeBlockCheck, UnResolved, UnaryValueCheck,
@@ -167,7 +167,7 @@ fn retrieve_index<'value>(
     } else {
         QueryResult::UnResolved(
             UnResolved {
-                traversed_to: parent,
+                traversed_to: rules::TraversedTo::Referenced(parent),
                 remaining_query: format!("{}", SliceDisplay(query)),
                 reason: Some(
                     format!("Array Index out of bounds for path = {} on index = {} inside Array = {:?}, remaining query = {}",
@@ -274,7 +274,7 @@ fn to_unresolved_value<'value>(
     query: &[QueryPart<'_>],
 ) -> QueryResult<'value> {
     QueryResult::UnResolved(UnResolved {
-        traversed_to: current,
+        traversed_to: rules::TraversedTo::Referenced(current),
         reason: Some(reason),
         remaining_query: format!("{}", SliceDisplay(query)),
     })
@@ -1495,7 +1495,7 @@ pub(crate) enum UnaryCheck<'value> {
 impl<'value> ValueComparisons<'value> for UnaryCheck<'value> {
     fn value_from(&self) -> Option<&'value PathAwareValue> {
         match self {
-            UnaryCheck::UnResolved(ur) => Some(ur.value.traversed_to),
+            UnaryCheck::UnResolved(ur) => Some(ur.value.traversed_to.inner()),
             UnaryCheck::Resolved(uc) => Some(uc.value),
             UnaryCheck::UnResolvedContext(_) => None,
         }
@@ -1533,7 +1533,7 @@ pub(crate) enum BinaryCheck<'value> {
 impl<'value> ValueComparisons<'value> for BinaryCheck<'value> {
     fn value_from(&self) -> Option<&'value PathAwareValue> {
         match self {
-            BinaryCheck::UnResolved(vur) => Some(vur.value.traversed_to),
+            BinaryCheck::UnResolved(vur) => Some(vur.value.traversed_to.inner()),
             BinaryCheck::Resolved(res) => Some(res.from),
             BinaryCheck::InResolved(inr) => Some(inr.from),
         }
@@ -1598,7 +1598,7 @@ pub(crate) struct GuardBlockReport<'value> {
 impl<'value> ValueComparisons<'value> for GuardBlockReport<'value> {
     fn value_from(&self) -> Option<&'value PathAwareValue> {
         if let Some(ur) = &self.unresolved {
-            return Some(ur.traversed_to);
+            return Some(ur.traversed_to.inner());
         }
         None
     }
@@ -1848,7 +1848,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                 ClauseCheck::MissingBlockValue(missing) => {
                     let (property, far, ur) = match &missing.from {
                         QueryResult::UnResolved(ur) => {
-                            (ur.remaining_query.as_str(), ur.traversed_to, ur)
+                            (ur.remaining_query.as_str(), ur.traversed_to.clone(), ur)
                         }
                         _ => unreachable!(),
                     };
@@ -2119,16 +2119,23 @@ fn report_all_failed_clauses_for_rules<'value>(
                                 error_message: Some(error_message),
                             },
                             check: BinaryCheck::InResolved(InComparison {
-                                from: from.resolved().map_or_else(
-                                    || from.unresolved_traversed_to().unwrap(),
-                                    std::convert::identity,
-                                ),
+                                // from: from.resolved().map_or_else(
+                                //     || match from.unresolved_traversed_to().unwrap(),
+                                //     std::convert::identity,
+                                // ),
+                                from: match from.resolved() {
+                                    Some(val) => val,
+                                    None => match from.unresolved_traversed_to() {
+                                        Some(val) => val,
+                                        None => unreachable!(),
+                                    },
+                                },
                                 to: to
                                     .iter()
                                     .filter(|t| matches!(t, QueryResult::Resolved(_)))
                                     .map(|t| match t {
                                         QueryResult::Resolved(v) => v,
-                                        QueryResult::UnResolved(ur) => ur.traversed_to,
+                                        QueryResult::UnResolved(ur) => ur.traversed_to.inner(),
                                         QueryResult::Literal(l) => *l,
                                         QueryResult::Computed(_) => todo!(),
                                     })

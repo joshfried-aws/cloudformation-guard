@@ -12,15 +12,17 @@ pub(crate) mod values;
 
 use errors::Error;
 
+use crate::rules::display::ValueOnlyDisplay;
 use crate::rules::exprs::{ParameterizedRule, QueryPart};
-use crate::rules::path_value::PathAwareValue;
+use crate::rules::path_value::{Path, PathAwareValue};
 use crate::rules::values::CmpOperator;
 use colored::*;
 use lazy_static::lazy_static;
 use nom::lib::std::convert::TryFrom;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Formatter;
+use std::convert::TryInto;
+use std::fmt::{Display, Formatter};
 
 pub(crate) type Result<R> = std::result::Result<R, Error>;
 
@@ -151,9 +153,55 @@ impl std::fmt::Display for EvaluationType {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct UnResolved<'value> {
-    pub(crate) traversed_to: &'value PathAwareValue,
+    pub(crate) traversed_to: TraversedTo<'value>,
     pub(crate) remaining_query: String,
     pub(crate) reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) enum TraversedTo<'value> {
+    Owned(PathAwareValue),
+    Referenced(&'value PathAwareValue),
+}
+
+impl<'value> TryInto<(String, serde_json::Value)> for TraversedTo<'value> {
+    type Error = Error;
+
+    fn try_into(self) -> core::result::Result<(String, serde_json::Value), Self::Error> {
+        match self {
+            TraversedTo::Owned(ref v) => v.try_into(),
+            TraversedTo::Referenced(v) => v.try_into(),
+        }
+    }
+}
+
+impl<'value> Display for TraversedTo<'value> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("Path={} Value=", self.self_path()))?;
+
+        ValueOnlyDisplay(match self {
+            TraversedTo::Owned(v) => v,
+            TraversedTo::Referenced(v) => v,
+        })
+        .fmt(f)
+    }
+}
+
+impl<'value> TraversedTo<'value> {
+    pub(crate) fn self_path(&self) -> &Path {
+        match self {
+            TraversedTo::Owned(val) => val.self_path(),
+            TraversedTo::Referenced(val) => val.self_path(),
+        }
+    }
+
+    pub(crate) fn inner(&self) -> &'value PathAwareValue {
+        match self {
+            // TraveredTo::Owned(ref val) => val,
+            TraversedTo::Referenced(val) => val,
+            _ => panic!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -167,14 +215,23 @@ pub(crate) enum QueryResult<'value> {
 impl<'value> QueryResult<'value> {
     pub(crate) fn resolved(&self) -> Option<&'value PathAwareValue> {
         if let QueryResult::Resolved(res) = self {
-            return Some(*res);
+            return Some(res);
         }
+
+        None
+    }
+
+    pub(crate) fn computed(&self) -> Option<&PathAwareValue> {
+        if let QueryResult::Computed(res) = self {
+            return Some(res);
+        }
+
         None
     }
 
     pub(crate) fn unresolved_traversed_to(&self) -> Option<&'value PathAwareValue> {
         if let QueryResult::UnResolved(res) = self {
-            return Some(res.traversed_to);
+            return Some(res.traversed_to.inner());
         }
         None
     }

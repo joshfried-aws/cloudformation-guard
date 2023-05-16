@@ -1,7 +1,7 @@
 use super::*;
 use crate::rules::eval_context::eval_context_tests::BasicQueryTesting;
 use crate::rules::exprs::AccessQuery;
-use crate::rules::EvalContext;
+use crate::rules::{self, EvalContext};
 use std::convert::TryFrom;
 
 const RESOURCES: &str = r###"
@@ -579,7 +579,7 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
     ));
     let ur = UnResolved {
         reason: None,
-        traversed_to: &unresolved_rhs_traversed_to,
+        traversed_to: rules::TraversedTo::Referenced(&unresolved_rhs_traversed_to),
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let query_results = vec![
@@ -822,7 +822,7 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     ));
     let ur = UnResolved {
         reason: None,
-        traversed_to: &unresolved_rhs_traversed_to,
+        traversed_to: rules::TraversedTo::Referenced(&unresolved_rhs_traversed_to),
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let lhs_query_results = vec![
@@ -998,7 +998,7 @@ fn test_operator_in_scalar_literal_to_query_ok_with_unresolved() -> crate::rules
     ));
     let ur = UnResolved {
         reason: None,
-        traversed_to: &unresolved_rhs_traversed_to,
+        traversed_to: rules::TraversedTo::Referenced(&unresolved_rhs_traversed_to),
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let query_results = vec![

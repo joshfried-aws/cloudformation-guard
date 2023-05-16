@@ -96,7 +96,7 @@ fn pprint_failed_sub_tree(
                 ClauseCheck::MissingBlockValue(missing) => {
                     let (property, far) = match &missing.from {
                         QueryResult::UnResolved(ur) => {
-                            (ur.remaining_query.as_str(), ur.traversed_to)
+                            (ur.remaining_query.as_str(), ur.traversed_to.clone())
                         }
                         _ => unreachable!(),
                     };

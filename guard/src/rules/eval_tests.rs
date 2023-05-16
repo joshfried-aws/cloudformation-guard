@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{stderr, stdout};
 
+use crate::rules;
 use crate::utils::writer::Writer;
 use grep_searcher::SearcherBuilder;
 use indoc::formatdoc;
@@ -58,7 +59,7 @@ fn test_all_unary_functions() -> Result<()> {
             ],
             // Failure tests
             vec![QueryResult::UnResolved(UnResolved {
-                traversed_to: &path_value,
+                traversed_to: rules::TraversedTo::Referenced(&path_value),
                 reason: None,
                 remaining_query: "".to_string(),
             })],
@@ -73,7 +74,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::UnResolved(UnResolved {
                     remaining_query: "".to_string(),
                     reason: None,
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                 }),
             ],
             // Failure tests
@@ -94,7 +95,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&int_value),
                 QueryResult::Resolved(&non_empty_path_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -111,7 +112,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&string_value),
                 QueryResult::Resolved(&non_empty_path_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -132,7 +133,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&string_value),
                 QueryResult::Resolved(&non_empty_path_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -153,7 +154,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&empty_list_value),
                 QueryResult::Resolved(&float_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -170,7 +171,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&string_value),
                 QueryResult::Resolved(&non_empty_path_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -188,7 +189,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&int_value),
                 QueryResult::Resolved(&non_empty_path_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -208,7 +209,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&float_range_value),
                 QueryResult::Resolved(&int_range_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -228,7 +229,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&float_range_value),
                 QueryResult::Resolved(&char_range_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -248,7 +249,7 @@ fn test_all_unary_functions() -> Result<()> {
                 QueryResult::Resolved(&char_range_value),
                 QueryResult::Resolved(&char_range_value),
                 QueryResult::UnResolved(UnResolved {
-                    traversed_to: &path_value,
+                    traversed_to: rules::TraversedTo::Referenced(&path_value),
                     reason: None,
                     remaining_query: "".to_string(),
                 }),
@@ -979,8 +980,8 @@ fn block_guard_pass() -> Result<()> {
                                         custom_message: Some(msg),
                                         message: None,
                                         comparison: (CmpOperator::Eq, true),
-                                        from: QueryResult::Resolved(from_q),
-                                        to: Some(QueryResult::Resolved(_)),
+                                        from: QueryResult::Computed(from_q),
+                                        to: Some(QueryResult::Computed(_)),
                                     },
                                 )) => {
                                     assert_eq!(msg, "No wildcard allowed for Principals");
@@ -1793,6 +1794,13 @@ fn test_multiple_valued_clause_reporting() -> Result<()> {
                                         == "/Resources/failed/Properties/Name",
                             );
                         }
+                        QueryResult::Computed(res) => {
+                            assert!(
+                                res.self_path().0.as_str() == "/Resources/second/Properties/Name"
+                                    || res.self_path().0.as_str()
+                                        == "/Resources/failed/Properties/Name",
+                            );
+                        }
 
                         _ => unreachable!(),
                     }
@@ -2539,12 +2547,23 @@ fn filter_based_join_clauses_failures_and_skips() -> Result<()> {
                 ClauseCheck::Comparison(ComparisonClauseCheck { status, from, .. }) => {
                     assert_eq!(*status, Status::FAIL);
                     assert!(each.context.contains("Action") || each.context.contains("Principal"),);
-                    assert!(from.resolved().map_or(false, |res| {
-                        let path = res.self_path().0.as_str();
+
+                    let path = match from.resolved() {
+                        Some(v) => v,
+                        None => match from.computed() {
+                            Some(v) => v,
+                            None => unreachable!(),
+                        },
+                    }
+                    .self_path()
+                    .0
+                    .as_str();
+
+                    assert!(
                         path == "/Resources/iam/Properties/PolicyDocument/Statement/Action"
                             || path
                                 == "/Resources/iam/Properties/PolicyDocument/Statement/Principal/0"
-                    }))
+                    );
                 }
 
                 _ => unreachable!(),

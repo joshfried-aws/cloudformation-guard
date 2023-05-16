@@ -115,7 +115,10 @@ fn empty_value_return_unresolved() -> Result<()> {
     assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 1);
     let path_ref = match &query_results[0] {
-        QueryResult::UnResolved(ur) => ur.traversed_to,
+        QueryResult::UnResolved(ur) => match ur.traversed_to {
+            crate::rules::TraversedTo::Owned(ref val) => val,
+            crate::rules::TraversedTo::Referenced(val) => val,
+        },
         _ => unreachable!(),
     };
     assert!(std::ptr::eq(&path_value, path_ref));
