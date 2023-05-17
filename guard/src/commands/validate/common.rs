@@ -719,9 +719,7 @@ impl<'key, T> PartialEq for IdentityHash<'key, T> {
 }
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub(super) struct Node<'report, 'value: 'report> {
-    pub(super) parent: std::rc::Rc<String>,
     pub(super) path: std::rc::Rc<String>,
     pub(super) clause: &'report ClauseReport<'value>,
 }
@@ -740,7 +738,6 @@ pub(super) fn insert_into_trees<'report, 'value: 'report>(
 ) {
     let path = std::rc::Rc::new(clause.key(&parent));
     let node = std::rc::Rc::new(Node {
-        parent,
         path: path.clone(),
         clause,
     });
@@ -766,7 +763,6 @@ pub(super) fn insert_into_trees_from_parent<'report, 'value: 'report>(
 ) {
     let path = std::rc::Rc::new(clause.key(&parent));
     let node = std::rc::Rc::new(Node {
-        parent,
         path: path.clone(),
         clause,
     });

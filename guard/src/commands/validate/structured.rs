@@ -1,3 +1,5 @@
+use std::vec;
+
 use crate::commands::validate::{parse_rules, DataFile, OutputFormatType, RuleFileInfo};
 use crate::rules;
 use crate::rules::eval::eval_rules_file;

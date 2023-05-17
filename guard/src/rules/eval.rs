@@ -859,17 +859,12 @@ where
 
 fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
     lhs: &'query [QueryResult<'value>],
-    // lhs_query: &'value
-    // rhs: &'query [QueryResult<'value>],
     results: EvalResult<'query>,
     cmp: (CmpOperator, bool),
     context: String,
     custom_message: Option<String>,
     eval_context: &mut dyn EvalContext<'value, 'loc>,
 ) -> Result<EvaluationResult<'query>> {
-    // let lhs = eval_context.query(lhs_query)?;
-    // let results = cmp.compare(lhs, rhs)?;
-
     match results {
         operators::EvalResult::Skip => return Ok(EvaluationResult::EmptyQueryResult(Status::SKIP)),
         operators::EvalResult::Result(results) => {
