@@ -54,8 +54,8 @@ fn test_all_unary_functions() -> Result<()> {
             Box::new(exists_operation),
             // Successful tests
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&non_empty_path_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
             ],
             // Failure tests
             vec![QueryResult::UnResolved(UnResolved {
@@ -68,9 +68,9 @@ fn test_all_unary_functions() -> Result<()> {
             Box::new(element_empty_operation),
             // Successful Tests
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&empty_string_value), // we do check for string empty as well
-                QueryResult::Resolved(&empty_list_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&empty_string_value)), // we do check for string empty as well
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&empty_list_value)),
                 QueryResult::UnResolved(UnResolved {
                     remaining_query: "".to_string(),
                     reason: None,
@@ -79,21 +79,23 @@ fn test_all_unary_functions() -> Result<()> {
             ],
             // Failure tests
             vec![
-                QueryResult::Resolved(&non_empty_path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
             ],
         ),
         (
             Box::new(is_string_operation),
             // Success Case
-            vec![QueryResult::Resolved(&string_value)],
+            vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                &string_value,
+            ))],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&int_value),
-                QueryResult::Resolved(&non_empty_path_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -104,13 +106,15 @@ fn test_all_unary_functions() -> Result<()> {
         (
             Box::new(is_int_operation),
             // Success Case
-            vec![QueryResult::Resolved(&int_value)],
+            vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                &int_value,
+            ))],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&non_empty_path_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -122,16 +126,16 @@ fn test_all_unary_functions() -> Result<()> {
             Box::new(is_list_operation),
             // Success Case
             vec![
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&empty_list_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&empty_list_value)),
             ],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&int_value),
-                QueryResult::Resolved(&int_range_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&non_empty_path_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_range_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -143,16 +147,16 @@ fn test_all_unary_functions() -> Result<()> {
             Box::new(is_struct_operation),
             // Success Case
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&non_empty_path_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
             ],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&int_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&empty_list_value),
-                QueryResult::Resolved(&float_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&empty_list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&float_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -163,13 +167,15 @@ fn test_all_unary_functions() -> Result<()> {
         (
             Box::new(is_bool_operation),
             // Success Case
-            vec![QueryResult::Resolved(&bool_value)],
+            vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                &bool_value,
+            ))],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&non_empty_path_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -180,14 +186,16 @@ fn test_all_unary_functions() -> Result<()> {
         (
             Box::new(is_float_operation),
             // Success Case
-            vec![QueryResult::Resolved(&float_value)],
+            vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                &float_value,
+            ))],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&int_value),
-                QueryResult::Resolved(&non_empty_path_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -198,16 +206,18 @@ fn test_all_unary_functions() -> Result<()> {
         (
             Box::new(is_char_range_operation),
             // Success Case
-            vec![QueryResult::Resolved(&char_range_value)],
+            vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                &char_range_value,
+            ))],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&int_value),
-                QueryResult::Resolved(&non_empty_path_value),
-                QueryResult::Resolved(&float_range_value),
-                QueryResult::Resolved(&int_range_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&float_range_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_range_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -218,16 +228,18 @@ fn test_all_unary_functions() -> Result<()> {
         (
             Box::new(is_int_range_operation),
             // Success Case
-            vec![QueryResult::Resolved(&int_range_value)],
+            vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                &int_range_value,
+            ))],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&int_value),
-                QueryResult::Resolved(&non_empty_path_value),
-                QueryResult::Resolved(&float_range_value),
-                QueryResult::Resolved(&char_range_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&float_range_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&char_range_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -238,16 +250,18 @@ fn test_all_unary_functions() -> Result<()> {
         (
             Box::new(is_float_range_operation),
             // Success Case
-            vec![QueryResult::Resolved(&float_range_value)],
+            vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                &float_range_value,
+            ))],
             // Failure Cases
             vec![
-                QueryResult::Resolved(&path_value),
-                QueryResult::Resolved(&list_value),
-                QueryResult::Resolved(&string_value),
-                QueryResult::Resolved(&int_value),
-                QueryResult::Resolved(&non_empty_path_value),
-                QueryResult::Resolved(&char_range_value),
-                QueryResult::Resolved(&char_range_value),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&list_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&string_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&int_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&non_empty_path_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&char_range_value)),
+                QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&char_range_value)),
                 QueryResult::UnResolved(UnResolved {
                     traversed_to: &path_value,
                     reason: None,
@@ -366,7 +380,7 @@ fn each_lhs_value_not_comparable() -> Result<()> {
     };
     let rhs_query = AccessQuery::try_from("Parameters.allowed_images")?.query;
     let rhs = eval.query(&rhs_query)?;
-    let result = each_lhs_compare(compare_eq, lhs, &rhs)?;
+    let result = each_lhs_compare(compare_eq, lhs.inner(), &rhs)?;
 
     assert_eq!(result.len(), 1);
     let cmp_result = &result[0];
@@ -379,7 +393,7 @@ fn each_lhs_value_not_comparable() -> Result<()> {
                 QueryResult::Resolved(ptr) => *ptr,
                 _ => unreachable!(),
             };
-            assert!(std::ptr::eq(rhs_ptr, *value));
+            assert!(std::ptr::eq(rhs_ptr.inner(), *value));
         }
 
         _ => unreachable!(),
@@ -387,7 +401,7 @@ fn each_lhs_value_not_comparable() -> Result<()> {
 
     let result = each_lhs_compare(
         in_cmp(true), // not in operation
-        lhs,
+        lhs.inner(),
         &rhs,
     )?;
 
@@ -403,7 +417,7 @@ fn each_lhs_value_not_comparable() -> Result<()> {
 
     let result = each_lhs_compare(
         in_cmp(false), // in operation
-        lhs,
+        lhs.inner(),
         &rhs,
     )?;
 
@@ -450,7 +464,7 @@ fn each_lhs_value_eq_compare() -> Result<()> {
     let rhs_query = AccessQuery::try_from("Parameters.allowed_images[*]")?.query;
     let rhs = eval.query(&rhs_query)?;
     assert_eq!(rhs.len(), 2);
-    let result = each_lhs_compare(compare_eq, lhs, &rhs)?;
+    let result = each_lhs_compare(compare_eq, lhs.inner(), &rhs)?;
 
     assert_eq!(result.len(), 2);
     for cmp_result in result {
@@ -460,7 +474,7 @@ fn each_lhs_value_eq_compare() -> Result<()> {
                 outcome,
             }) => {
                 if outcome {
-                    match (lhs, rhs) {
+                    match (lhs.inner(), rhs) {
                         (PathAwareValue::String((_, s1)), PathAwareValue::String((_, s2))) => {
                             assert_eq!(s1, s2);
                             assert!(!std::ptr::eq(s1, s2));
@@ -469,7 +483,7 @@ fn each_lhs_value_eq_compare() -> Result<()> {
                         (_, _) => unreachable!(),
                     }
                 } else {
-                    match (lhs, rhs) {
+                    match (lhs.inner(), rhs) {
                         (PathAwareValue::String((_, s1)), PathAwareValue::String((_, s2))) => {
                             assert_ne!(s1, s2);
                             assert!(!std::ptr::eq(s1, s2));
@@ -523,13 +537,17 @@ fn each_lhs_value_eq_compare_mixed_comparable() -> Result<()> {
     assert_eq!(selected_lhs.len(), 2); // 2 statements present
 
     let rhs_value = PathAwareValue::try_from(r#""*""#)?;
-    let rhs_query_result = vec![QueryResult::Resolved(&rhs_value)];
+    let rhs_query_result = vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+        &rhs_value,
+    ))];
     for each_lhs in selected_lhs {
         match each_lhs {
             QueryResult::Resolved(lhs) => {
-                for cmp_result in
-                    each_lhs_compare(not_compare(compare_eq, true), lhs, &rhs_query_result)?
-                {
+                for cmp_result in each_lhs_compare(
+                    not_compare(compare_eq, true),
+                    lhs.inner(),
+                    &rhs_query_result,
+                )? {
                     match cmp_result {
                         ComparisonResult::Comparable(ComparisonWithRhs { outcome, .. }) => {
                             if !outcome {
@@ -586,11 +604,13 @@ fn each_lhs_value_eq_compare_mixed_single_plus_array_form_correct_exec() -> Resu
     assert_eq!(selected_lhs.len(), 3); // 3 selected values
 
     let rhs_value = PathAwareValue::try_from(r#""*""#)?;
-    let rhs_query_result = vec![QueryResult::Resolved(&rhs_value)];
+    let rhs_query_result = vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+        &rhs_value,
+    ))];
     for each_lhs in selected_lhs {
         match each_lhs {
             QueryResult::Resolved(lhs) => {
-                for cmp_result in each_lhs_compare(compare_eq, lhs, &rhs_query_result)? {
+                for cmp_result in each_lhs_compare(compare_eq, lhs.inner(), &rhs_query_result)? {
                     match cmp_result {
                         ComparisonResult::Comparable(ComparisonWithRhs { outcome, .. }) => {
                             if outcome {
@@ -624,9 +644,13 @@ macro_rules! test_case {
         for each_lhs in values {
             match each_lhs {
                 QueryResult::Resolved(res) => {
-                    for cmp_result in
-                        each_lhs_compare($func, res, &[QueryResult::Resolved(&rhs_value)])?
-                    {
+                    for cmp_result in each_lhs_compare(
+                        $func,
+                        res.inner(),
+                        &[QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+                            &rhs_value,
+                        ))],
+                    )? {
                         match cmp_result {
                             ComparisonResult::Comparable(ComparisonWithRhs { outcome, .. }) => {
                                 assert_eq!(outcome, $assert);

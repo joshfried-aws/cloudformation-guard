@@ -3,7 +3,7 @@ use crate::rules::eval_context::eval_context_tests::BasicQueryTesting;
 use crate::rules::eval_context::EventRecord;
 use crate::rules::exprs::{AccessQuery, GuardClause, RulesFile};
 use crate::rules::values::Value;
-use crate::rules::RecordType;
+use crate::rules::{self, RecordType};
 use crate::rules::{EvalContext, NamedStatus, Status};
 use std::convert::TryFrom;
 
@@ -158,12 +158,21 @@ fn test_operator_eq_queries() -> crate::rules::Result<()> {
         String::from("s3"),
     ))];
 
-    let s3_keys_query_results: Vec<QueryResult<'_>> =
-        s3_keys.iter().map(QueryResult::Resolved).collect();
-    let s3_bucket_policy_results: Vec<QueryResult<'_>> =
-        s3_bucket_refs.iter().map(QueryResult::Resolved).collect();
+    let s3_keys_query_results: Vec<QueryResult<'_>> = s3_keys
+        .iter()
+        .map(rules::ResolvedQuery::Borrowed)
+        .map(QueryResult::Resolved)
+        .collect();
+
+    let s3_bucket_policy_results: Vec<QueryResult<'_>> = s3_bucket_refs
+        .iter()
+        .map(rules::ResolvedQuery::Borrowed)
+        .map(QueryResult::Resolved)
+        .collect();
+
     let result =
         (CmpOperator::Eq, false).compare(&s3_keys_query_results, &s3_bucket_policy_results)?;
+
     let result = match result {
         EvalResult::Result(v) => v,
         _ => unreachable!(),
@@ -207,8 +216,8 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     ));
 
     let lhs_queries = [
-        QueryResult::Resolved(&lhs_scalar),
-        QueryResult::Resolved(&lhs_list),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&lhs_scalar)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&lhs_list)),
     ];
 
     let rhs_scalar = PathAwareValue::String((Path::root(), "*".to_string()));
@@ -310,8 +319,8 @@ fn test_operator_in_scalar_literal_to_query_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(&scalar_query_value),
-        QueryResult::Resolved(&scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_list_value)),
     ];
 
     //
@@ -363,8 +372,8 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(&scalar_query_value),
-        QueryResult::Resolved(&scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_list_value)),
     ];
 
     //
@@ -411,8 +420,8 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(&scalar_query_value),
-        QueryResult::Resolved(&scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_list_value)),
     ];
 
     //
@@ -505,8 +514,8 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(&scalar_query_value),
-        QueryResult::Resolved(&scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_list_value)),
     ];
 
     //
@@ -591,8 +600,8 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let query_results = vec![
-        QueryResult::Resolved(&scalar_query_value),
-        QueryResult::Resolved(&scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_list_value)),
         QueryResult::UnResolved(ur.clone()),
     ];
 
@@ -697,8 +706,8 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     ));
 
     let lhs_query_results = vec![
-        QueryResult::Resolved(&lhs_scalar_value),
-        QueryResult::Resolved(&lhs_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&lhs_scalar_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&lhs_list_value)),
     ];
 
     let rhs_scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
@@ -713,8 +722,8 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     ));
 
     let rhs_query_results = vec![
-        QueryResult::Resolved(&rhs_scalar_query_value),
-        QueryResult::Resolved(&rhs_scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&rhs_scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&rhs_scalar_query_list_value)),
     ];
 
     let eval = match CmpOperator::In.compare(&lhs_query_results, &rhs_query_results)? {
@@ -756,7 +765,9 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     //
     // Just list and it contains everything
     //
-    let rhs_query_results = vec![QueryResult::Resolved(&rhs_scalar_query_list_value)];
+    let rhs_query_results = vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+        &rhs_scalar_query_list_value,
+    ))];
 
     //
     // Query results to Literal. This returns 6 results as we flatten the list to compare with
@@ -834,8 +845,8 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let lhs_query_results = vec![
-        QueryResult::Resolved(&lhs_scalar_value),
-        QueryResult::Resolved(&lhs_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&lhs_scalar_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&lhs_list_value)),
         QueryResult::UnResolved(ur.clone()),
     ];
 
@@ -850,8 +861,8 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     ));
 
     let rhs_query_results = vec![
-        QueryResult::Resolved(&rhs_scalar_query_value),
-        QueryResult::Resolved(&rhs_scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&rhs_scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&rhs_scalar_query_list_value)),
     ];
 
     let eval = match CmpOperator::In.compare(&lhs_query_results, &rhs_query_results)? {
@@ -888,7 +899,9 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     //
     // Just list
     //
-    let rhs_query_results = vec![QueryResult::Resolved(&rhs_scalar_query_list_value)];
+    let rhs_query_results = vec![QueryResult::Resolved(rules::ResolvedQuery::Borrowed(
+        &rhs_scalar_query_list_value,
+    ))];
 
     let eval = match CmpOperator::In.compare(&lhs_query_results, &rhs_query_results)? {
         EvalResult::Result(s) => s,
@@ -965,7 +978,7 @@ fn test_operator_in_literal_list_in_query_ok() -> crate::rules::Result<()> {
     ));
     let lhs = QueryResult::Literal(&lhs_value);
     let rhs_value = PathAwareValue::String((Path::root(), String::from("Environment")));
-    let rhs = QueryResult::Resolved(&rhs_value);
+    let rhs = QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&rhs_value));
     match CmpOperator::In.compare(&[lhs], &[rhs]) {
         Ok(EvalResult::Result(result)) => {
             for each in result {
@@ -1010,8 +1023,8 @@ fn test_operator_in_scalar_literal_to_query_ok_with_unresolved() -> crate::rules
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let query_results = vec![
-        QueryResult::Resolved(&scalar_query_value),
-        QueryResult::Resolved(&scalar_query_list_value),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_value)),
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&scalar_query_list_value)),
         QueryResult::UnResolved(ur.clone()),
     ];
 

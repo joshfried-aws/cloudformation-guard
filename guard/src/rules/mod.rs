@@ -13,7 +13,7 @@ pub(crate) mod values;
 use errors::Error;
 
 use crate::rules::exprs::{ParameterizedRule, QueryPart};
-use crate::rules::path_value::PathAwareValue;
+use crate::rules::path_value::{Path, PathAwareValue};
 use crate::rules::values::CmpOperator;
 use colored::*;
 use lazy_static::lazy_static;
@@ -163,14 +163,77 @@ pub(crate) struct UnResolved<'value> {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) enum QueryResult<'value> {
     Literal(&'value PathAwareValue),
-    Resolved(&'value PathAwareValue),
+    // Resolved(&'value PathAwareValue),
+    Resolved(ResolvedQuery<'value>),
     UnResolved(UnResolved<'value>),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) enum ResolvedQuery<'value> {
+    Owned(PathAwareValue),
+    Borrowed(&'value PathAwareValue),
+}
+
+impl<'value> ResolvedQuery<'value> {
+    pub(crate) fn inner(&self) -> &PathAwareValue {
+        match self {
+            ResolvedQuery::Owned(val) => val,
+            ResolvedQuery::Borrowed(val) => val,
+        }
+    }
+
+    pub(crate) fn type_info(&self) -> &'static str {
+        match self.inner() {
+            PathAwareValue::Null(_path) => "null",
+            PathAwareValue::String((_path, _)) => "String",
+            PathAwareValue::Regex((_path, _)) => "Regex",
+            PathAwareValue::Bool((_path, _)) => "bool",
+            PathAwareValue::Int((_path, _)) => "int",
+            PathAwareValue::Float((_path, _)) => "float",
+            PathAwareValue::Char((_path, _)) => "char",
+            PathAwareValue::List((_path, _)) => "array",
+            PathAwareValue::Map((_path, _)) => "map",
+            PathAwareValue::RangeInt((_path, _)) => "range(int, int)",
+            PathAwareValue::RangeFloat((_path, _)) => "range(float, float)",
+            PathAwareValue::RangeChar((_path, _)) => "range(char, char)",
+        }
+    }
+
+    pub(crate) fn self_path(&self) -> &Path {
+        self.inner().self_path()
+    }
+
+    pub(crate) fn is_list(&self) -> bool {
+        match self.inner() {
+            PathAwareValue::List((_, _)) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_map(&self) -> bool {
+        match self.inner() {
+            PathAwareValue::Map((_, _)) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_null(&self) -> bool {
+        match self.inner() {
+            PathAwareValue::Null(_) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_scalar(&self) -> bool {
+        let val = self.inner();
+        !val.is_list() && !val.is_map()
+    }
 }
 
 impl<'value> QueryResult<'value> {
     pub(crate) fn resolved(&self) -> Option<&'value PathAwareValue> {
         if let QueryResult::Resolved(res) = self {
-            return Some(*res);
+            return Some(res.inner());
         }
         None
     }

@@ -13,7 +13,25 @@ pub(crate) fn url_decode(
     let mut aggr = Vec::with_capacity(args.len());
     for entry in args.iter() {
         match entry {
-            QueryResult::Literal(val) | QueryResult::Resolved(val) => match *val {
+            QueryResult::Resolved(val) => {
+                let val = val.inner();
+                match *val {
+                    PathAwareValue::String((path, val)) => {
+                        if let Ok(aggr_str) = urlencoding::decode(val.as_str()) {
+                            aggr.push(Some(PathAwareValue::String((
+                                path.clone(),
+                                aggr_str.into_owned(),
+                            ))));
+                        } else {
+                            aggr.push(None);
+                        }
+                    }
+                    _ => {
+                        aggr.push(None);
+                    }
+                }
+            }
+            QueryResult::Literal(val) => match *val {
                 PathAwareValue::String((path, val)) => {
                     if let Ok(aggr_str) = urlencoding::decode(val.as_str()) {
                         aggr.push(Some(PathAwareValue::String((
@@ -42,7 +60,16 @@ pub(crate) fn json_parse(
     let mut aggr = Vec::with_capacity(args.len());
     for entry in args.iter() {
         match entry {
-            QueryResult::Literal(v) | QueryResult::Resolved(v) => {
+            QueryResult::Literal(v) => {
+                if let PathAwareValue::String((path, val)) = v {
+                    let value = serde_yaml::from_str::<serde_yaml::Value>(val)?;
+                    aggr.push(Some(PathAwareValue::try_from((&value, path.clone()))?));
+                } else {
+                    aggr.push(None);
+                }
+            }
+            QueryResult::Resolved(v) => {
+                let v = v.inner();
                 if let PathAwareValue::String((path, val)) = v {
                     let value = serde_yaml::from_str::<serde_yaml::Value>(val)?;
                     aggr.push(Some(PathAwareValue::try_from((&value, path.clone()))?));
@@ -64,7 +91,20 @@ pub(crate) fn regex_replace(
     let mut aggr = Vec::with_capacity(args.len());
     for entry in args.iter() {
         match entry {
-            QueryResult::Literal(v) | QueryResult::Resolved(v) => {
+            QueryResult::Resolved(v) => {
+                let v = v.inner();
+                if let PathAwareValue::String((path, val)) = v {
+                    let regex = Regex::new(extract_expr)?;
+                    let mut replaced = String::with_capacity(replace_expr.len() * 2);
+                    for cap in regex.captures_iter(val) {
+                        cap?.expand(replace_expr, &mut replaced);
+                    }
+                    aggr.push(Some(PathAwareValue::String((path.clone(), replaced))));
+                } else {
+                    aggr.push(None);
+                }
+            }
+            QueryResult::Literal(v) => {
                 if let PathAwareValue::String((path, val)) = v {
                     let regex = Regex::new(extract_expr)?;
                     let mut replaced = String::with_capacity(replace_expr.len() * 2);
@@ -92,7 +132,20 @@ pub(crate) fn substring(
     let mut aggr = Vec::with_capacity(args.len());
     for entry in args.iter() {
         match entry {
-            QueryResult::Literal(v) | QueryResult::Resolved(v) => {
+            QueryResult::Resolved(v) => {
+                let v = v.inner();
+                if let PathAwareValue::String((path, val)) = v {
+                    if !val.is_empty() && from < to && from <= val.len() && to <= val.len() {
+                        let sub = val.as_str().slice(from..to).to_string();
+                        aggr.push(Some(PathAwareValue::String((path.clone(), sub))));
+                    } else {
+                        aggr.push(None);
+                    }
+                } else {
+                    aggr.push(None);
+                }
+            }
+            QueryResult::Literal(v) => {
                 if let PathAwareValue::String((path, val)) = v {
                     if !val.is_empty() && from < to && from <= val.len() && to <= val.len() {
                         let sub = val.as_str().slice(from..to).to_string();
@@ -118,7 +171,17 @@ pub(crate) fn to_upper(
     let mut aggr = Vec::with_capacity(args.len());
     for entry in args.iter() {
         match entry {
-            QueryResult::Literal(v) | QueryResult::Resolved(v) => {
+            QueryResult::Resolved(v) => {
+                if let PathAwareValue::String((path, val)) = v.inner() {
+                    aggr.push(Some(PathAwareValue::String((
+                        path.clone(),
+                        val.to_uppercase(),
+                    ))));
+                } else {
+                    aggr.push(None);
+                }
+            }
+            QueryResult::Literal(v) => {
                 if let PathAwareValue::String((path, val)) = v {
                     aggr.push(Some(PathAwareValue::String((
                         path.clone(),
@@ -142,7 +205,17 @@ pub(crate) fn to_lower(
     let mut aggr = Vec::with_capacity(args.len());
     for entry in args.iter() {
         match entry {
-            QueryResult::Literal(v) | QueryResult::Resolved(v) => {
+            QueryResult::Resolved(v) => {
+                if let PathAwareValue::String((path, val)) = v.inner() {
+                    aggr.push(Some(PathAwareValue::String((
+                        path.clone(),
+                        val.to_lowercase(),
+                    ))));
+                } else {
+                    aggr.push(None);
+                }
+            }
+            QueryResult::Literal(v) => {
                 if let PathAwareValue::String((path, val)) = v {
                     aggr.push(Some(PathAwareValue::String((
                         path.clone(),
@@ -167,7 +240,18 @@ pub(crate) fn join(
     let mut aggr = String::with_capacity(512);
     for entry in args.iter() {
         match entry {
-            QueryResult::Literal(v) | QueryResult::Resolved(v) => {
+            QueryResult::Resolved(v) => {
+                if let PathAwareValue::String((_, val)) = v.inner() {
+                    aggr.push_str(delimiter);
+                    aggr.push_str(val);
+                } else {
+                    return Err(Error::IncompatibleError(format!(
+                        "Joining non string values {}",
+                        v.inner()
+                    )));
+                }
+            }
+            QueryResult::Literal(v) => {
                 if let PathAwareValue::String((_, val)) = v {
                     aggr.push_str(delimiter);
                     aggr.push_str(val);

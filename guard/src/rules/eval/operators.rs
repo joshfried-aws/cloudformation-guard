@@ -123,7 +123,8 @@ where
     E: Fn(UnResolved<'value>) -> R,
 {
     match qr {
-        QueryResult::Resolved(r) | QueryResult::Literal(r) => Ok(*r),
+        QueryResult::Resolved(r) => Ok(r.inner()),
+        QueryResult::Literal(r) => Ok(*r),
         QueryResult::UnResolved(ur) => Err(err(ur.clone())),
     }
 }
@@ -162,7 +163,8 @@ where
     let mut aggregated = Vec::with_capacity(query_results.len());
     for each in query_results {
         match each {
-            QueryResult::Literal(l) | QueryResult::Resolved(l) => r(&mut aggregated, *l),
+            QueryResult::Literal(l) => r(&mut aggregated, *l),
+            QueryResult::Resolved(l) => r(&mut aggregated, l.inner()),
             QueryResult::UnResolved(ur) => c(ur),
         }
     }

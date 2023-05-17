@@ -5,8 +5,8 @@ use crate::rules::exprs::{
 };
 use crate::rules::path_value::{MapValue, PathAwareValue};
 use crate::rules::values::CmpOperator;
-use crate::rules::Result;
 use crate::rules::Status::SKIP;
+use crate::rules::{self, Result};
 use crate::rules::{
     BlockCheck, ClauseCheck, ComparisonClauseCheck, EvalContext, InComparisonCheck, NamedStatus,
     QueryResult, RecordTracer, RecordType, Status, TypeBlockCheck, UnResolved, UnaryValueCheck,
@@ -132,7 +132,7 @@ fn retrieve_index<'value>(
 ) -> QueryResult<'value> {
     let check = if index >= 0 { index } else { -index } as usize;
     if check < elements.len() {
-        QueryResult::Resolved(&elements[check])
+        QueryResult::Resolved(rules::ResolvedQuery::Borrowed(&elements[check]))
     } else {
         QueryResult::UnResolved(
             UnResolved {
@@ -176,7 +176,7 @@ fn accumulate<'value, 'loc: 'value>(
         accumulated.extend(query_retrieval_with_converter(
             query_index + 1,
             query,
-            each,
+            rules::ResolvedQuery::Borrowed(each),
             resolver,
             converter,
         )?);
@@ -258,7 +258,6 @@ fn to_unresolved_result<'value>(
 }
 
 fn map_resolved<'value, F>(
-    _current: &'value PathAwareValue,
     query_result: QueryResult<'value>,
     func: F,
 ) -> Result<Vec<QueryResult<'value>>>
@@ -266,7 +265,7 @@ where
     F: FnOnce(&'value PathAwareValue) -> Result<Vec<QueryResult<'value>>>,
 {
     match query_result {
-        QueryResult::Resolved(res) => func(res),
+        QueryResult::Resolved(res) => func(res.inner()),
         rest => Ok(vec![rest]),
     }
 }
@@ -298,9 +297,13 @@ fn check_and_delegate<'value, 'loc: 'value>(
                     }
                 }
                 match status {
-                    Status::PASS => {
-                        query_retrieval_with_converter(index, query, value, eval_context, converter)
-                    }
+                    Status::PASS => query_retrieval_with_converter(
+                        index,
+                        query,
+                        rules::ResolvedQuery::Borrowed(value),
+                        eval_context,
+                        converter,
+                    ),
                     _ => Ok(vec![]),
                 }
             }
@@ -331,13 +334,19 @@ fn query_retrieval<'value, 'loc: 'value>(
     current: &'value PathAwareValue,
     resolver: &mut dyn EvalContext<'value, 'loc>,
 ) -> Result<Vec<QueryResult<'value>>> {
-    query_retrieval_with_converter(query_index, query, current, resolver, None)
+    query_retrieval_with_converter(
+        query_index,
+        query,
+        rules::ResolvedQuery::Borrowed(current),
+        resolver,
+        None,
+    )
 }
 
 fn query_retrieval_with_converter<'value, 'loc: 'value>(
     query_index: usize,
     query: &'value [QueryPart<'loc>],
-    current: &'value PathAwareValue,
+    current: rules::ResolvedQuery<'value>,
     resolver: &mut dyn EvalContext<'value, 'loc>,
     converter: Option<&dyn Fn(&str) -> String>,
 ) -> Result<Vec<QueryResult<'value>>> {
@@ -353,7 +362,30 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 QueryResult::UnResolved(ur) => {
                     resolved.push(QueryResult::UnResolved(ur));
                 }
-                QueryResult::Literal(value) | QueryResult::Resolved(value) => {
+                QueryResult::Resolved(value) => {
+                    // let value = value.inner();
+                    let index = if query_index + 1 < query.len() {
+                        match &query[query_index + 1] {
+                            QueryPart::AllIndices(_name) => query_index + 2,
+                            _ => query_index + 1,
+                        }
+                    } else {
+                        query_index + 1
+                    };
+
+                    if index < query.len() {
+                        let mut scope = ValueScope {
+                            root: value.inner(),
+                            parent: resolver,
+                        };
+                        resolved.extend(query_retrieval_with_converter(
+                            index, query, value, &mut scope, converter,
+                        )?);
+                    } else {
+                        resolved.push(each.clone())
+                    }
+                }
+                QueryResult::Literal(value) => {
                     let index = if query_index + 1 < query.len() {
                         match &query[query_index + 1] {
                             QueryPart::AllIndices(_name) => query_index + 2,
@@ -369,10 +401,14 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                             parent: resolver,
                         };
                         resolved.extend(query_retrieval_with_converter(
-                            index, query, value, &mut scope, converter,
+                            index,
+                            query,
+                            rules::ResolvedQuery::Borrowed(value),
+                            &mut scope,
+                            converter,
                         )?);
                     } else {
-                        resolved.push(each)
+                        resolved.push(each.clone())
                     }
                 }
             }
@@ -386,13 +422,13 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
         }
 
         QueryPart::Key(key) => match key.parse::<i32>() {
-            Ok(idx) => match current {
+            Ok(idx) => match current.inner() {
                 PathAwareValue::List((_, list)) => {
-                    map_resolved(current, retrieve_index(current, idx, list, query), |val| {
+                    map_resolved(retrieve_index(current.inner(), idx, list, query), |val| {
                         query_retrieval_with_converter(
                             query_index + 1,
                             query,
-                            val,
+                            rules::ResolvedQuery::Borrowed(val),
                             resolver,
                             converter,
                         )
@@ -400,7 +436,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 }
 
                 _ => to_unresolved_result(
-                    current,
+                    current.inner(),
                     format!(
                         "Attempting to retrieve from index {} but type is not an array at path {}",
                         idx,
@@ -411,7 +447,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
             },
 
             Err(_) => {
-                if let PathAwareValue::Map((path, map)) = current {
+                if let PathAwareValue::Map((path, map)) = current.inner() {
                     if query[query_index].is_variable() {
                         let var = query[query_index].variable().unwrap();
                         let keys = resolver.resolve_variable(var)?;
@@ -424,7 +460,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             vec![keys[check].clone()]
                                         } else {
                                             return to_unresolved_result(
-                                                current,
+                                                current.inner(),
                                                 format!("Index {} on the set of values returned for variable {} on the join, is out of bounds. Length {}, Values = {:?}",
                                                         check, var, keys.len(), keys),
                                                 &query[query_index..]
@@ -446,7 +482,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                 QueryResult::UnResolved(ur) => {
                                     acc.extend(
                                             to_unresolved_result(
-                                                current,
+                                                current.inner(),
                                                 format!("Keys returned for variable {} could not completely resolve. Path traversed until {}{}",
                                                         var, ur.traversed_to.self_path(), ur.reason.map_or("".to_string(), |msg| msg)
                                                 ),
@@ -454,21 +490,21 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             )?
                                         );
                                 }
-
-                                QueryResult::Literal(key) | QueryResult::Resolved(key) => {
+                                QueryResult::Resolved(key) => {
+                                    let key = key.inner();
                                     if let PathAwareValue::String((_, k)) = key {
                                         if let Some(next) = map.values.get(k) {
                                             acc.extend(query_retrieval_with_converter(
                                                 query_index + 1,
                                                 query,
-                                                next,
+                                                rules::ResolvedQuery::Borrowed(next),
                                                 resolver,
                                                 converter,
                                             )?);
                                         } else {
                                             acc.extend(
                                                     to_unresolved_result(
-                                                        current,
+                                                        current.inner(),
                                                         format!("Could not locate key = {} inside struct at path = {}", k, path),
                                                         &query[query_index..]
                                                     )?
@@ -479,11 +515,72 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             match each_key {
                                                     PathAwareValue::String((path, key_to_match)) => {
                                                         if let Some(next) = map.values.get(key_to_match) {
-                                                            acc.extend(query_retrieval_with_converter(query_index + 1, query, next, resolver, converter)?);
+                                                            acc.extend(query_retrieval_with_converter(query_index + 1, query, rules::ResolvedQuery::Borrowed(next), resolver, converter)?);
                                                         } else {
                                                             acc.extend(
                                                                 to_unresolved_result(
-                                                                    current,
+                                                                    current.inner(),
+                                                                    format!("Could not locate key = {} inside struct at path = {}", key_to_match, path),
+                                                                    &query[query_index..]
+                                                                )?
+                                                            );
+                                                        }
+                                                    },
+
+                                                    rest => {
+                                                        return Err(Error
+                                                            ::NotComparable(
+                                                                format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
+                                                                        SliceDisplay(query),
+                                                                        key.type_info(),
+                                                                        key.self_value()
+                                                                )
+
+                                                        ))
+                                                    }
+                                                }
+                                        }
+                                    } else {
+                                        return Err(Error
+                                               ::NotComparable(
+                                                    format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
+                                                            SliceDisplay(query),
+                                                            key.type_info(),
+                                                            key.self_value()
+                                                    )
+
+                                            ));
+                                    }
+                                }
+                                QueryResult::Literal(key) => {
+                                    if let PathAwareValue::String((_, k)) = key {
+                                        if let Some(next) = map.values.get(k) {
+                                            acc.extend(query_retrieval_with_converter(
+                                                query_index + 1,
+                                                query,
+                                                rules::ResolvedQuery::Borrowed(next),
+                                                resolver,
+                                                converter,
+                                            )?);
+                                        } else {
+                                            acc.extend(
+                                                    to_unresolved_result(
+                                                        current.inner(),
+                                                        format!("Could not locate key = {} inside struct at path = {}", k, path),
+                                                        &query[query_index..]
+                                                    )?
+                                                );
+                                        }
+                                    } else if let PathAwareValue::List((_, inner)) = key {
+                                        for each_key in inner {
+                                            match each_key {
+                                                    PathAwareValue::String((path, key_to_match)) => {
+                                                        if let Some(next) = map.values.get(key_to_match) {
+                                                            acc.extend(query_retrieval_with_converter(query_index + 1, query, rules::ResolvedQuery::Borrowed(next), resolver, converter)?);
+                                                        } else {
+                                                            acc.extend(
+                                                                to_unresolved_result(
+                                                                    current.inner(),
                                                                     format!("Could not locate key = {} inside struct at path = {}", key_to_match, path),
                                                                     &query[query_index..]
                                                                 )?
@@ -525,7 +622,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                 return query_retrieval_with_converter(
                                     query_index + 1,
                                     query,
-                                    val,
+                                    rules::ResolvedQuery::Borrowed(val),
                                     resolver,
                                     converter,
                                 )
@@ -538,7 +635,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                         return query_retrieval_with_converter(
                                             query_index + 1,
                                             query,
-                                            val,
+                                            rules::ResolvedQuery::Borrowed(val),
                                             resolver,
                                             converter,
                                         );
@@ -553,7 +650,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             return query_retrieval_with_converter(
                                                 query_index + 1,
                                                 query,
-                                                val,
+                                                rules::ResolvedQuery::Borrowed(val),
                                                 resolver,
                                                 Some(each_converter),
                                             );
@@ -564,14 +661,14 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         }
 
                         to_unresolved_result(
-                            current,
+                            current.inner(),
                             format!("Could not find key {} inside struct at path {}", key, path),
                             &query[query_index..],
                         )
                     }
                 } else {
                     to_unresolved_result(
-                            current,
+                            current.inner(),
                             format!("Attempting to retrieve from key {} but type is not an struct type at path {}, Type = {}, Value = {:?}",
                                     key, current.self_path(), current.type_info(), current),
                             &query[query_index..])
@@ -579,17 +676,22 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
             }
         },
 
-        QueryPart::Index(index) => match current {
+        QueryPart::Index(index) => match current.inner() {
             PathAwareValue::List((_, list)) => map_resolved(
-                current,
-                retrieve_index(current, *index, list, query),
+                retrieve_index(current.inner(), *index, list, query),
                 |val| {
-                    query_retrieval_with_converter(query_index + 1, query, val, resolver, converter)
+                    query_retrieval_with_converter(
+                        query_index + 1,
+                        query,
+                        rules::ResolvedQuery::Borrowed(val),
+                        resolver,
+                        converter,
+                    )
                 },
             ),
 
             _ => to_unresolved_result(
-                current,
+                current.inner(),
                 format!(
                     "Attempting to retrieve from index {} but type is not an array at path {}",
                     index,
@@ -600,10 +702,15 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
         },
 
         QueryPart::AllIndices(name) => {
-            match current {
-                PathAwareValue::List((_path, elements)) => {
-                    accumulate(current, query_index, query, elements, resolver, converter)
-                }
+            match current.inner() {
+                PathAwareValue::List((_path, elements)) => accumulate(
+                    current.inner(),
+                    query_index,
+                    query,
+                    elements,
+                    resolver,
+                    converter,
+                ),
 
                 PathAwareValue::Map((_, map)) => {
                     if name.is_none() {
@@ -617,7 +724,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                     } else {
                         let name = name.as_ref().unwrap().as_str();
                         accumulate_map(
-                            current,
+                            current.inner(),
                             map,
                             query_index,
                             query,
@@ -626,7 +733,11 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                             |index, query, key, value, context, converter| {
                                 context.add_variable_capture_key(name, key)?;
                                 query_retrieval_with_converter(
-                                    index, query, value, context, converter,
+                                    index,
+                                    query,
+                                    rules::ResolvedQuery::Borrowed(value),
+                                    context,
+                                    converter,
                                 )
                             },
                         )
@@ -641,7 +752,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 rest => query_retrieval_with_converter(
                     query_index + 1,
                     query,
-                    rest,
+                    rules::ResolvedQuery::Borrowed(rest),
                     resolver,
                     converter,
                 ),
@@ -649,13 +760,18 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
         }
 
         QueryPart::AllValues(name) => {
-            match current {
+            match current.inner() {
                 //
                 // Supporting old format
                 //
-                PathAwareValue::List((_path, elements)) => {
-                    accumulate(current, query_index, query, elements, resolver, converter)
-                }
+                PathAwareValue::List((_path, elements)) => accumulate(
+                    current.inner(),
+                    query_index,
+                    query,
+                    elements,
+                    resolver,
+                    converter,
+                ),
 
                 PathAwareValue::Map((_path, map)) => {
                     let (report, name) = match name {
@@ -663,7 +779,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         None => (false, ""),
                     };
                     accumulate_map(
-                        current,
+                        current.inner(),
                         map,
                         query_index,
                         query,
@@ -673,7 +789,13 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                             if report {
                                 context.add_variable_capture_key(name, key)?;
                             }
-                            query_retrieval_with_converter(index, query, value, context, converter)
+                            query_retrieval_with_converter(
+                                index,
+                                query,
+                                rules::ResolvedQuery::Borrowed(value),
+                                context,
+                                converter,
+                            )
                         },
                     )
                 }
@@ -686,7 +808,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 rest => query_retrieval_with_converter(
                     query_index + 1,
                     query,
-                    rest,
+                    rules::ResolvedQuery::Borrowed(rest),
                     resolver,
                     converter,
                 ),
@@ -694,15 +816,15 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
         }
 
         QueryPart::Filter(name, conjunctions) => {
-            match current {
+            match current.inner() {
                 PathAwareValue::Map((_path, map)) => {
                     match &query[query_index - 1] {
                         QueryPart::AllValues(_name) | QueryPart::AllIndices(_name) => {
                             check_and_delegate(conjunctions, &None)(
                                 query_index + 1,
                                 query,
-                                current,
-                                current,
+                                current.inner(),
+                                current.inner(),
                                 resolver,
                                 converter,
                             )
@@ -723,7 +845,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                             //                                })
                             if !map.is_empty() {
                                 accumulate_map(
-                                    current,
+                                    current.inner(),
                                     map,
                                     query_index,
                                     query,
@@ -746,7 +868,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         let context = format!("Filter/List#{}", conjunctions.len());
                         resolver.start_record(&context)?;
                         let mut val_resolver = ValueScope {
-                            root: each,
+                            root: &each,
                             parent: resolver,
                         };
                         let result = match super::eval::eval_conjunction_clauses(
@@ -760,7 +882,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                     Status::PASS => query_retrieval_with_converter(
                                         query_index + 1,
                                         query,
-                                        each,
+                                        rules::ResolvedQuery::Borrowed(each),
                                         resolver,
                                         converter,
                                     )?,
@@ -781,7 +903,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 _ => {
                     if let QueryPart::AllIndices(_) = &query[query_index - 1] {
                         let mut val_resolver = ValueScope {
-                            root: current,
+                            root: current.inner(),
                             parent: resolver,
                         };
                         match super::eval::eval_conjunction_clauses(
@@ -803,7 +925,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         }
                     } else {
                         to_unresolved_result(
-                            current,
+                            current.inner(),
                             format!(
                                 "Filter on value type that was not a struct or array {} {}",
                                 current.type_info(),
@@ -817,7 +939,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
         }
 
         QueryPart::MapKeyFilter(_name, map_key_filter) => match current {
-            PathAwareValue::Map((_path, map)) => {
+            rules::ResolvedQuery::Owned(PathAwareValue::Map((_path, map))) => {
                 let mut selected = Vec::with_capacity(map.values.len());
                 let rhs = match &map_key_filter.compare_with {
                     LetValue::AccessClause(acc_query) => {
@@ -841,7 +963,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 let lhs = map
                     .keys
                     .iter()
-                    .map(|p| QueryResult::Resolved(p))
+                    .map(|p| QueryResult::Resolved(rules::ResolvedQuery::Borrowed(p)))
                     .collect::<Vec<QueryResult<'_>>>();
 
                 let results = super::eval::real_binary_operation(
@@ -861,9 +983,11 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 for each_result in results {
                     match each_result {
                         (QueryResult::Resolved(key), Status::PASS) => {
-                            if let PathAwareValue::String((_, key_name)) = key {
+                            if let PathAwareValue::String((_, key_name)) = key.inner() {
                                 selected.push(QueryResult::Resolved(
-                                    map.values.get(key_name.as_str()).unwrap(),
+                                    rules::ResolvedQuery::Borrowed(
+                                        map.values.get(key_name.as_str()).unwrap(),
+                                    ),
                                 ));
                             }
                         }
@@ -881,11 +1005,20 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 let mut extended = Vec::with_capacity(selected.len());
                 for each in selected {
                     match each {
-                        QueryResult::Literal(r) | QueryResult::Resolved(r) => {
+                        QueryResult::Resolved(r) => {
                             extended.extend(query_retrieval_with_converter(
                                 query_index + 1,
                                 query,
                                 r,
+                                resolver,
+                                converter,
+                            )?);
+                        }
+                        QueryResult::Literal(r) => {
+                            extended.extend(query_retrieval_with_converter(
+                                query_index + 1,
+                                query,
+                                rules::ResolvedQuery::Borrowed(r),
                                 resolver,
                                 converter,
                             )?);
@@ -900,7 +1033,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
             }
 
             _ => to_unresolved_result(
-                current,
+                current.inner(),
                 format!(
                     "Map Filter for keys was not a struct {} {}",
                     current.type_info(),
@@ -1144,7 +1277,7 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
             .resolved_variables
             .entry(variable_name)
             .or_default()
-            .push(QueryResult::Resolved(key));
+            .push(QueryResult::Resolved(rules::ResolvedQuery::Borrowed(key)));
         Ok(())
     }
 }
@@ -1849,7 +1982,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     ),
                                     UnaryCheck::Resolved(UnaryComparison {
                                         comparison: (*cmp, *not),
-                                        value: *res,
+                                        value: res.inner(),
                                     })
                                 )
 
@@ -1930,8 +2063,8 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     QueryResult::Resolved(to_res) => {
                                         let message = format!(
                                                 "Check was not compliant as property value [{from}] {op_msg} value [{to}].{err}",
-                                                from=res,
-                                                to=to_res,
+                                                from=res.inner(),
+                                                to=to_res.inner(),
                                                 op_msg=match cmp {
                                                     CmpOperator::Eq => if *not { "equal to" } else { "not equal to" },
                                                     CmpOperator::Le => if *not { "less than equal to" } else { "less than equal to" },
@@ -1946,8 +2079,8 @@ fn report_all_failed_clauses_for_rules<'value>(
                                         clauses.push(ClauseReport::Clause(
                                             GuardClauseReport::Binary(BinaryReport {
                                                 check: BinaryCheck::Resolved(BinaryComparison {
-                                                    to: *to_res,
-                                                    from: res,
+                                                    to: to_res.inner(),
+                                                    from: res.inner(),
                                                     comparison: (*cmp, *not),
                                                 }),
                                                 context: current.context.to_string(),
@@ -2018,7 +2151,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                         _ => false,
                                     })
                                     .map(|t| match t {
-                                        QueryResult::Resolved(v) => v,
+                                        QueryResult::Resolved(v) => v.inner(),
                                         QueryResult::UnResolved(ur) => ur.traversed_to,
                                         QueryResult::Literal(l) => *l,
                                     })

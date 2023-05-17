@@ -259,8 +259,8 @@ fn pprint_failed_sub_tree(
                                 "{}{}Check was not compliant as property value [{from}] {op_msg} value [{to}].{err}{msg}",
                                 prefix,
                                 prefix_current,
-                                from=res,
-                                to=to_result.map_or("NULL".to_string(), |t| format!("{}", t)),
+                                from=res.inner(),
+                                to=to_result.map_or("NULL".to_string(), |t| format!("{}", t.inner())),
                                 op_msg=match cmp {
                                     CmpOperator::Eq => if *not { "equal to" } else { "not equal to" },
                                     CmpOperator::Le => if *not { "less than equal to" } else { "less than equal to" },

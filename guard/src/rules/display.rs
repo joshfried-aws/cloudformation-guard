@@ -113,7 +113,7 @@ impl<'value> std::fmt::Display for QueryResult<'value> {
             }
 
             QueryResult::Resolved(r) => {
-                f.write_fmt(format_args!("(resolved, {})", r))?;
+                f.write_fmt(format_args!("(resolved, {})", r.inner()))?;
             }
 
             QueryResult::UnResolved(ur) => {
