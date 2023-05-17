@@ -195,11 +195,17 @@ impl<'value> TraversedTo<'value> {
         }
     }
 
-    pub(crate) fn inner(&self) -> &'value PathAwareValue {
+    pub(crate) fn borrow_inner(&self) -> &'value PathAwareValue {
         match self {
-            // TraveredTo::Owned(ref val) => val,
             TraversedTo::Referenced(val) => val,
-            _ => panic!(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub(crate) fn clone_inner(&self) -> PathAwareValue {
+        match self {
+            TraversedTo::Owned(val) => val.clone(),
+            TraversedTo::Referenced(val) => (*val).clone(),
         }
     }
 }
@@ -231,7 +237,7 @@ impl<'value> QueryResult<'value> {
 
     pub(crate) fn unresolved_traversed_to(&self) -> Option<&'value PathAwareValue> {
         if let QueryResult::UnResolved(res) = self {
-            return Some(res.traversed_to.inner());
+            return Some(res.traversed_to.borrow_inner());
         }
         None
     }

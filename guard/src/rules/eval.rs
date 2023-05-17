@@ -894,7 +894,7 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                     comparison: cmp,
                                     from: QueryResult::UnResolved(UnResolved {
                                         traversed_to: TraversedTo::Owned(
-                                            traversed_to.inner().clone(),
+                                            traversed_to.clone_inner(),
                                         ),
                                         remaining_query: remaining_query.clone(),
                                         reason: reason.clone(),
@@ -932,7 +932,7 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                     from: QueryResult::Computed(lhs.clone()),
                                     to: Some(QueryResult::UnResolved(UnResolved {
                                         traversed_to: TraversedTo::Owned(
-                                            traversed_to.inner().clone(),
+                                            traversed_to.clone_inner(),
                                         ),
                                         remaining_query: remaining_query.clone(),
                                         reason: reason.clone(),

@@ -1495,7 +1495,7 @@ pub(crate) enum UnaryCheck<'value> {
 impl<'value> ValueComparisons<'value> for UnaryCheck<'value> {
     fn value_from(&self) -> Option<&'value PathAwareValue> {
         match self {
-            UnaryCheck::UnResolved(ur) => Some(ur.value.traversed_to.inner()),
+            UnaryCheck::UnResolved(ur) => Some(ur.value.traversed_to.borrow_inner()),
             UnaryCheck::Resolved(uc) => Some(uc.value),
             UnaryCheck::UnResolvedContext(_) => None,
         }
@@ -1533,7 +1533,7 @@ pub(crate) enum BinaryCheck<'value> {
 impl<'value> ValueComparisons<'value> for BinaryCheck<'value> {
     fn value_from(&self) -> Option<&'value PathAwareValue> {
         match self {
-            BinaryCheck::UnResolved(vur) => Some(vur.value.traversed_to.inner()),
+            BinaryCheck::UnResolved(vur) => Some(vur.value.traversed_to.borrow_inner()),
             BinaryCheck::Resolved(res) => Some(res.from),
             BinaryCheck::InResolved(inr) => Some(inr.from),
         }
@@ -1598,7 +1598,7 @@ pub(crate) struct GuardBlockReport<'value> {
 impl<'value> ValueComparisons<'value> for GuardBlockReport<'value> {
     fn value_from(&self) -> Option<&'value PathAwareValue> {
         if let Some(ur) = &self.unresolved {
-            return Some(ur.traversed_to.inner());
+            return Some(ur.traversed_to.borrow_inner());
         }
         None
     }
@@ -2135,7 +2135,9 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     .filter(|t| matches!(t, QueryResult::Resolved(_)))
                                     .map(|t| match t {
                                         QueryResult::Resolved(v) => v,
-                                        QueryResult::UnResolved(ur) => ur.traversed_to.inner(),
+                                        QueryResult::UnResolved(ur) => {
+                                            ur.traversed_to.borrow_inner()
+                                        }
                                         QueryResult::Literal(l) => *l,
                                         QueryResult::Computed(_) => todo!(),
                                     })
