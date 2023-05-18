@@ -108,11 +108,11 @@ pub(crate) struct NotComparable<'r> {
 // }
 
 pub(crate) trait Comparator {
-    fn compare<'query, 'value: 'query>(
+    fn compare<'value>(
         &self,
-        lhs: &'query [QueryResult<'value>],
-        rhs: &'query [QueryResult<'value>],
-    ) -> crate::rules::Result<EvalResult<'query>>;
+        lhs: &[QueryResult<'value>],
+        rhs: &[QueryResult<'value>],
+    ) -> crate::rules::Result<EvalResult<'value>>;
 }
 
 pub(crate) trait UnaryComparator {
@@ -167,11 +167,11 @@ where
 }
 
 impl Comparator for CommonOperator {
-    fn compare<'query, 'value: 'query>(
+    fn compare<'value>(
         &self,
-        lhs: &'query [QueryResult<'value>],
-        rhs: &'query [QueryResult<'value>],
-    ) -> crate::rules::Result<EvalResult<'query>> {
+        lhs: &[QueryResult<'value>],
+        rhs: &[QueryResult<'value>],
+    ) -> crate::rules::Result<EvalResult<'value>> {
         let mut results = Vec::with_capacity(lhs.len());
         let lhs_flattened = flattened(lhs, |ur| {
             results.push(ValueEvalResult::LhsUnresolved(ur.clone()))
@@ -355,11 +355,11 @@ fn contained_in<'value>(
 }
 
 impl Comparator for InOperation {
-    fn compare<'query, 'value: 'query>(
+    fn compare<'value>(
         &self,
-        lhs: &'query [QueryResult<'value>],
-        rhs: &'query [QueryResult<'value>],
-    ) -> crate::rules::Result<EvalResult<'query>> {
+        lhs: &[QueryResult<'value>],
+        rhs: &[QueryResult<'value>],
+    ) -> crate::rules::Result<EvalResult<'value>> {
         let mut results = Vec::with_capacity(lhs.len());
         match (is_literal(lhs), is_literal(rhs)) {
             (Some(l), Some(r)) => {
@@ -504,11 +504,11 @@ impl Comparator for InOperation {
 }
 
 impl Comparator for EqOperation {
-    fn compare<'query, 'value: 'query>(
+    fn compare<'value>(
         &self,
-        lhs: &'query [QueryResult<'value>],
-        rhs: &'query [QueryResult<'value>],
-    ) -> crate::rules::Result<EvalResult<'query>> {
+        lhs: &[QueryResult<'value>],
+        rhs: &[QueryResult<'value>],
+    ) -> crate::rules::Result<EvalResult<'value>> {
         let mut results = Vec::with_capacity(lhs.len());
         match (is_literal(lhs), is_literal(rhs)) {
             (Some(l), Some(r)) => {
@@ -666,11 +666,11 @@ impl Comparator for EqOperation {
 }
 
 impl Comparator for CmpOperator {
-    fn compare<'query, 'value: 'query>(
+    fn compare<'value>(
         &self,
-        lhs: &'query [QueryResult<'value>],
-        rhs: &'query [QueryResult<'value>],
-    ) -> crate::rules::Result<EvalResult<'query>> {
+        lhs: &[QueryResult<'value>],
+        rhs: &[QueryResult<'value>],
+    ) -> crate::rules::Result<EvalResult<'value>> {
         if lhs.is_empty() || rhs.is_empty() {
             return Ok(EvalResult::Skip);
         }
@@ -703,11 +703,11 @@ impl Comparator for CmpOperator {
 }
 
 impl Comparator for (CmpOperator, bool) {
-    fn compare<'query, 'value: 'query>(
+    fn compare<'value>(
         &self,
-        lhs: &'query [QueryResult<'value>],
-        rhs: &'query [QueryResult<'value>],
-    ) -> crate::rules::Result<EvalResult<'query>> {
+        lhs: &[QueryResult<'value>],
+        rhs: &[QueryResult<'value>],
+    ) -> crate::rules::Result<EvalResult<'value>> {
         let results = self.0.compare(lhs, rhs)?;
         Ok(match results {
             EvalResult::Skip => EvalResult::Skip,

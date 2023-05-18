@@ -220,27 +220,27 @@ impl<'value> TraversedTo<'value> {
     }
 
     pub(crate) fn is_list(&self) -> bool {
-        match self {
+        matches!(
+            self,
             TraversedTo::Owned(PathAwareValue::List((_, _)))
-            | TraversedTo::Referenced(PathAwareValue::List((_, _))) => true,
-            _ => false,
-        }
+                | TraversedTo::Referenced(PathAwareValue::List((_, _)))
+        )
     }
 
     pub(crate) fn is_map(&self) -> bool {
-        match self {
+        matches!(
+            self,
             TraversedTo::Owned(PathAwareValue::Map((_, _)))
-            | TraversedTo::Referenced(PathAwareValue::Map((_, _))) => true,
-            _ => false,
-        }
+                | TraversedTo::Referenced(PathAwareValue::Map((_, _)))
+        )
     }
 
     pub(crate) fn is_null(&self) -> bool {
-        match self {
+        matches!(
+            self,
             TraversedTo::Owned(PathAwareValue::Null(_))
-            | TraversedTo::Referenced(PathAwareValue::Null(_)) => true,
-            _ => false,
-        }
+                | TraversedTo::Referenced(PathAwareValue::Null(_))
+        )
     }
 
     pub(crate) fn is_scalar(&self) -> bool {

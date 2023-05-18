@@ -743,12 +743,12 @@ pub(super) fn insert_into_trees<'report, 'value: 'report>(
     hierarchy.insert(path, node.clone());
 
     if let Some(from) = clause.value_from() {
-        let path = from.self_path().0.as_str();
+        let path = from.borrow_inner().self_path().0.as_str();
         path_tree.entry(path).or_insert(vec![]).push(node.clone());
     }
 
     if let Some(from) = clause.value_to() {
-        let path = from.self_path().0.as_str();
+        let path = from.borrow_inner().self_path().0.as_str();
         path_tree.entry(path).or_insert(vec![]).push(node);
     }
 }

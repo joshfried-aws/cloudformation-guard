@@ -393,7 +393,7 @@ fn each_lhs_value_not_comparable() -> Result<()> {
                 QueryResult::Resolved(ptr) => ptr,
                 _ => unreachable!(),
             };
-            assert!(std::ptr::eq(rhs_ptr, value));
+            assert!(std::ptr::eq(rhs_ptr.borrow_inner2(), value.borrow_inner2()));
         }
 
         _ => unreachable!(),

@@ -25,7 +25,6 @@ fn element_empty_operation(value: &QueryResult<'_>) -> Result<bool> {
         // !EXISTS is the same as EMPTY
         //
         QueryResult::UnResolved(_) => Ok(true),
-        // QueryResult::Resolved(value) => handle_empty_operation(value),
     }
 }
 
@@ -450,9 +449,8 @@ enum ComparisonResult<'r> {
 }
 
 #[derive(Debug, Clone)]
-struct LhsRhsPair<'value> {
+pub(crate) struct LhsRhsPair<'value> {
     lhs: TraversedTo<'value>,
-    // NOTE: Do we wanna make this &'value? ... does that even make sense???
     rhs: TraversedTo<'value>,
 }
 
@@ -958,14 +956,11 @@ where
 fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
     lhs_query: &'value [QueryPart<'loc>],
     rhs: &[QueryResult<'value>],
-    // results: EvalResult<'query>,
     cmp: (CmpOperator, bool),
     context: String,
     custom_message: Option<String>,
     eval_context: &mut dyn EvalContext<'value, 'loc>,
 ) -> Result<EvaluationResult<'query>> {
-    // let lhs = eval_context.query(lhs)?;
-    // let results = cmp.compare(lhs, rhs)?;
     let lhs = eval_context.query(lhs_query)?;
     let results = cmp.compare(&lhs, rhs)?;
     match results {
@@ -1165,7 +1160,7 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                             let rhs = qin
                                 .rhs
                                 .into_iter()
-                                .map(|e| QueryResult::Resolved(e))
+                                .map(QueryResult::Resolved)
                                 .collect::<Vec<_>>();
                             for lhs in qin.diff {
                                 eval_context.start_record(&context)?;
@@ -1469,12 +1464,7 @@ pub(in crate::rules) fn eval_guard_access_clause<'value, 'loc: 'value>(
         }
     };
 
-    let lhs = resolver.query(&gac.access_clause.query.query)?;
-    let results = gac.access_clause.comparator.compare(&lhs, &rhs)?;
-
     let statues = binary_operation(
-        // &lhs,
-        // results,
         &gac.access_clause.query.query,
         &rhs,
         gac.access_clause.comparator,
