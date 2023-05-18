@@ -235,9 +235,9 @@ fn single_line(
                             cw="ComparedWith",
                             prefix=prefix,
                             path=property,
-                            value=ValueOnlyDisplay(bc.from),
+                            value=ValueOnlyDisplay(bc.from.clone()),
                             cmp=crate::rules::eval_context::cmp_str(bc.comparison),
-                            with=ValueOnlyDisplay(bc.to)
+                            with=ValueOnlyDisplay(bc.to.clone())
                         )?;
                         Ok(width)
                     }

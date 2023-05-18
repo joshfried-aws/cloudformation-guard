@@ -95,11 +95,11 @@ fn no_query_return_root() -> Result<()> {
     let query_results = eval.query(&[])?;
     assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 1);
-    let path_ref = match query_results[0] {
+    let path_ref = match query_results[0].clone() {
         QueryResult::Resolved(r) => r,
         _ => unreachable!(),
     };
-    assert!(std::ptr::eq(&path_value, path_ref));
+    assert!(std::ptr::eq(&path_value, &path_ref.clone_inner()));
     Ok(())
 }
 
@@ -212,7 +212,6 @@ fn non_empty_value_mixed_results() -> Result<()> {
                     "/Resources/ec2/Properties"
                 );
             }
-            QueryResult::Computed(_) => todo!(),
         }
     }
 
@@ -261,7 +260,6 @@ fn non_empty_value_with_missing_list_property() -> Result<()> {
                     "/Resources/ec2/Properties"
                 );
             }
-            QueryResult::Computed(_) => todo!(),
         }
     }
 
@@ -311,7 +309,6 @@ fn non_empty_value_with_empty_list_property() -> Result<()> {
                     "/Resources/ec2/Properties/Tags"
                 );
             }
-            QueryResult::Computed(_) => todo!(),
         }
     }
 
@@ -455,7 +452,6 @@ fn test_with_converter() -> Result<()> {
                     "/Resources/ec2/Properties/Tags"
                 );
             }
-            QueryResult::Computed(_) => todo!(),
         }
     }
 

@@ -275,9 +275,9 @@ fn single_line(
                             cw = "ComparedWith",
                             prefix = prefix,
                             path = bc.from.self_path(),
-                            value = ValueOnlyDisplay(bc.from),
+                            value = ValueOnlyDisplay(bc.from.clone()),
                             cmp = rules::eval_context::cmp_str(bc.comparison),
-                            with = ValueOnlyDisplay(bc.to)
+                            with = ValueOnlyDisplay(bc.to.clone())
                         )?;
                         self.emit_code(writer, bc.from.self_path().1.line, prefix)?;
                         Ok(width)
@@ -293,7 +293,7 @@ fn single_line(
                         let cut_off = max(bc.to.len(), 5);
                         let mut collected = Vec::with_capacity(10);
                         for (idx, each) in bc.to.iter().enumerate() {
-                            collected.push(ValueOnlyDisplay(each));
+                            collected.push(ValueOnlyDisplay(each.clone()));
                             if idx >= cut_off {
                                 break;
                             }
@@ -311,7 +311,7 @@ fn single_line(
                                 cw = "ComparedWith",
                                 prefix = prefix,
                                 path = bc.from.self_path(),
-                                value = ValueOnlyDisplay(bc.from),
+                                value = ValueOnlyDisplay(bc.from.clone()),
                                 cmp = rules::eval_context::cmp_str(bc.comparison),
                                 with = collected
                             )?;
@@ -327,7 +327,7 @@ fn single_line(
                                 cw = "ComparedWith",
                                 prefix = prefix,
                                 path = bc.from.self_path(),
-                                value = ValueOnlyDisplay(bc.from),
+                                value = ValueOnlyDisplay(bc.from.clone()),
                                 cmp = rules::eval_context::cmp_str(bc.comparison),
                                 total = bc.to.len(),
                                 with = collected

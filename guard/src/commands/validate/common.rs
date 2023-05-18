@@ -197,7 +197,7 @@ pub(super) fn extract_name_info_from_record<'record>(
 
         Some(RecordType::ClauseValueCheck(ClauseCheck::Unary(check))) => match &check.value.from {
             QueryResult::Resolved(res) => {
-                let (path, provided): (String, serde_json::Value) = (*res).try_into()?;
+                let (path, provided): (String, serde_json::Value) = res.clone().try_into()?;
                 NameInfo {
                     rule: rule_name,
                     comparison: Some(check.comparison.into()),
@@ -259,11 +259,11 @@ pub(super) fn extract_name_info_from_record<'record>(
             QueryResult::Literal(_) => unreachable!(),
 
             QueryResult::Resolved(res) => {
-                let (path, provided): (String, serde_json::Value) = (*res).try_into()?;
+                let (path, provided): (String, serde_json::Value) = res.clone().try_into()?;
                 let expected: Option<(String, serde_json::Value)> = match &check.to {
                     Some(to) => match to {
                         QueryResult::Literal(_) => unreachable!(),
-                        QueryResult::Resolved(v) => Some((*v).try_into()?),
+                        QueryResult::Resolved(v) => Some(v.clone().try_into()?),
                         QueryResult::UnResolved(ur) => Some(ur.traversed_to.clone().try_into()?),
                         // QueryResult::Computed(v) => Some(v.try_into()?),
                     },
@@ -355,7 +355,7 @@ pub(super) fn extract_name_info_from_record<'record>(
             for each in &incomp.to {
                 let (_, expected): (String, serde_json::Value) = match each {
                     QueryResult::Literal(l) => (*l).try_into()?,
-                    QueryResult::Resolved(v) => (*v).try_into()?,
+                    QueryResult::Resolved(v) => v.clone().try_into()?,
                     QueryResult::UnResolved(ur) => ur.traversed_to.clone().try_into()?,
                     // QueryResult::Computed(c) => c.try_into()?,
                 };

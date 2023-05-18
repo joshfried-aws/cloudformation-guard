@@ -10,7 +10,7 @@ use crate::rules::functions::strings::{
 use crate::rules::path_value::{MapValue, Path, PathAwareValue};
 use crate::rules::values::CmpOperator;
 use crate::rules::Status::SKIP;
-use crate::rules::{self, Result};
+use crate::rules::{self, Result, TraversedTo};
 use crate::rules::{
     BlockCheck, ClauseCheck, ComparisonClauseCheck, EvalContext, InComparisonCheck, NamedStatus,
     QueryResult, RecordTracer, RecordType, Status, TypeBlockCheck, UnResolved, UnaryValueCheck,
@@ -163,7 +163,7 @@ fn retrieve_index<'value>(
 ) -> QueryResult<'value> {
     let check = if index >= 0 { index } else { -index } as usize;
     if check < elements.len() {
-        QueryResult::Resolved(&elements[check])
+        QueryResult::Resolved(rules::TraversedTo::Referenced(&elements[check]))
     } else {
         QueryResult::UnResolved(
             UnResolved {
@@ -297,7 +297,7 @@ where
     F: FnOnce(&'value PathAwareValue) -> Result<Vec<QueryResult<'value>>>,
 {
     match query_result {
-        QueryResult::Resolved(res) => func(res),
+        QueryResult::Resolved(res) => func(res.borrow_inner()),
         rest => Ok(vec![rest]),
     }
 }
@@ -375,18 +375,46 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
     converter: Option<&dyn Fn(&str) -> String>,
 ) -> Result<Vec<QueryResult<'value>>> {
     if query_index >= query.len() {
-        return Ok(vec![QueryResult::Resolved(current)]);
+        return Ok(vec![QueryResult::Resolved(rules::TraversedTo::Referenced(
+            current,
+        ))]);
     }
 
     if query_index == 0 && query[query_index].is_variable() {
         let retrieved = resolver.resolve_variable(query[query_index].variable().unwrap())?;
         let mut resolved = Vec::with_capacity(retrieved.len());
         for each in retrieved {
-            match each {
+            match &each {
                 QueryResult::UnResolved(ur) => {
-                    resolved.push(QueryResult::UnResolved(ur));
+                    resolved.push(QueryResult::UnResolved(ur.clone()));
                 }
-                QueryResult::Literal(value) | QueryResult::Resolved(value) => {
+                QueryResult::Resolved(value) => {
+                    let index = if query_index + 1 < query.len() {
+                        match &query[query_index + 1] {
+                            QueryPart::AllIndices(_name) => query_index + 2,
+                            _ => query_index + 1,
+                        }
+                    } else {
+                        query_index + 1
+                    };
+
+                    if index < query.len() {
+                        let mut scope = ValueScope {
+                            root: value.borrow_inner(),
+                            parent: resolver,
+                        };
+                        resolved.extend(query_retrieval_with_converter(
+                            index,
+                            query,
+                            value.borrow_inner(),
+                            &mut scope,
+                            converter,
+                        )?);
+                    } else {
+                        resolved.push(each.clone())
+                    }
+                }
+                QueryResult::Literal(value) => {
                     let index = if query_index + 1 < query.len() {
                         match &query[query_index + 1] {
                             QueryPart::AllIndices(_name) => query_index + 2,
@@ -408,7 +436,6 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         resolved.push(each)
                     }
                 }
-                QueryResult::Computed(_) => todo!(),
             }
         }
         return Ok(resolved);
@@ -488,8 +515,70 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             )?
                                         );
                                 }
+                                QueryResult::Resolved(key) => {
+                                    let key = key.clone_inner();
+                                    if let PathAwareValue::String((_, k)) = key {
+                                        if let Some(next) = map.values.get(&k) {
+                                            acc.extend(query_retrieval_with_converter(
+                                                query_index + 1,
+                                                query,
+                                                next,
+                                                resolver,
+                                                converter,
+                                            )?);
+                                        } else {
+                                            acc.extend(
+                                                    to_unresolved_result(
+                                                        current,
+                                                        format!("Could not locate key = {} inside struct at path = {}", k, path),
+                                                        &query[query_index..]
+                                                    )?
+                                                );
+                                        }
+                                    } else if let PathAwareValue::List((_, inner)) = &key {
+                                        for each_key in inner {
+                                            match each_key {
+                                                    PathAwareValue::String((path, key_to_match)) => {
+                                                        if let Some(next) = map.values.get(key_to_match) {
+                                                            acc.extend(query_retrieval_with_converter(query_index + 1, query, next, resolver, converter)?);
+                                                        } else {
+                                                            acc.extend(
+                                                                to_unresolved_result(
+                                                                    current,
+                                                                    format!("Could not locate key = {} inside struct at path = {}", key_to_match, path),
+                                                                    &query[query_index..]
+                                                                )?
+                                                            );
+                                                        }
+                                                    },
 
-                                QueryResult::Literal(key) | QueryResult::Resolved(key) => {
+                                                    _rest => {
+                                                        return Err(Error
+                                                            ::NotComparable(
+                                                                format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
+                                                                        SliceDisplay(query),
+                                                                        key.type_info(),
+                                                                        key.self_value()
+                                                                )
+
+                                                        ))
+                                                    }
+                                                }
+                                        }
+                                    } else {
+                                        return Err(Error
+                                               ::NotComparable(
+                                                    format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
+                                                            SliceDisplay(query),
+                                                            key.type_info(),
+                                                            key.self_value()
+                                                    )
+
+                                            ));
+                                    }
+                                }
+                                QueryResult::Resolved(key) => {
+                                    let key = &key.clone_inner();
                                     if let PathAwareValue::String((_, k)) = key {
                                         if let Some(next) = map.values.get(k) {
                                             acc.extend(query_retrieval_with_converter(
@@ -550,7 +639,67 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             ));
                                     }
                                 }
-                                QueryResult::Computed(_) => todo!(),
+                                QueryResult::Literal(key) => {
+                                    if let PathAwareValue::String((_, k)) = key {
+                                        if let Some(next) = map.values.get(k) {
+                                            acc.extend(query_retrieval_with_converter(
+                                                query_index + 1,
+                                                query,
+                                                next,
+                                                resolver,
+                                                converter,
+                                            )?);
+                                        } else {
+                                            acc.extend(
+                                                    to_unresolved_result(
+                                                        current,
+                                                        format!("Could not locate key = {} inside struct at path = {}", k, path),
+                                                        &query[query_index..]
+                                                    )?
+                                                );
+                                        }
+                                    } else if let PathAwareValue::List((_, inner)) = key {
+                                        for each_key in inner {
+                                            match each_key {
+                                                    PathAwareValue::String((path, key_to_match)) => {
+                                                        if let Some(next) = map.values.get(key_to_match) {
+                                                            acc.extend(query_retrieval_with_converter(query_index + 1, query, next, resolver, converter)?);
+                                                        } else {
+                                                            acc.extend(
+                                                                to_unresolved_result(
+                                                                    current,
+                                                                    format!("Could not locate key = {} inside struct at path = {}", key_to_match, path),
+                                                                    &query[query_index..]
+                                                                )?
+                                                            );
+                                                        }
+                                                    },
+
+                                                    _rest => {
+                                                        return Err(Error
+                                                            ::NotComparable(
+                                                                format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
+                                                                        SliceDisplay(query),
+                                                                        key.type_info(),
+                                                                        key.self_value()
+                                                                )
+
+                                                        ))
+                                                    }
+                                                }
+                                        }
+                                    } else {
+                                        return Err(Error
+                                               ::NotComparable(
+                                                    format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
+                                                            SliceDisplay(query),
+                                                            key.type_info(),
+                                                            key.self_value()
+                                                    )
+
+                                            ));
+                                    }
+                                }
                             }
                         }
                         Ok(acc)
@@ -873,6 +1022,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 let lhs = map
                     .keys
                     .iter()
+                    .map(TraversedTo::Referenced)
                     .map(QueryResult::Resolved)
                     .collect::<Vec<QueryResult<'_>>>();
 
@@ -893,9 +1043,11 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 for each_result in results {
                     match each_result {
                         (QueryResult::Resolved(key), Status::PASS) => {
-                            if let PathAwareValue::String((_, key_name)) = key {
+                            if let PathAwareValue::String((_, key_name)) = &key.clone_inner() {
                                 selected.push(QueryResult::Resolved(
-                                    map.values.get(key_name.as_str()).unwrap(),
+                                    rules::TraversedTo::Referenced(
+                                        map.values.get(key_name.as_str()).unwrap(),
+                                    ),
                                 ));
                             }
                         }
@@ -913,7 +1065,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 let mut extended = Vec::with_capacity(selected.len());
                 for each in selected {
                     match each {
-                        QueryResult::Literal(r) | QueryResult::Resolved(r) => {
+                        QueryResult::Literal(r) => {
                             extended.extend(query_retrieval_with_converter(
                                 query_index + 1,
                                 query,
@@ -922,11 +1074,18 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                 converter,
                             )?);
                         }
-
+                        QueryResult::Resolved(r) => {
+                            extended.extend(query_retrieval_with_converter(
+                                query_index + 1,
+                                query,
+                                r.borrow_inner(),
+                                resolver,
+                                converter,
+                            )?);
+                        }
                         QueryResult::UnResolved(ur) => {
                             extended.push(QueryResult::UnResolved(ur));
                         }
-                        QueryResult::Computed(_) => todo!(),
                     }
                 }
                 Ok(extended)
@@ -1168,7 +1327,8 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
             let result = try_handle_function_call(name, &args)?
                 .into_iter()
                 .flatten()
-                .map(QueryResult::Computed)
+                .map(TraversedTo::Owned)
+                .map(QueryResult::Resolved)
                 .collect::<Vec<_>>();
 
             self.scope
@@ -1214,7 +1374,7 @@ impl<'value, 'loc: 'value> EvalContext<'value, 'loc> for RootScope<'value, 'loc>
             .resolved_variables
             .entry(variable_name)
             .or_default()
-            .push(QueryResult::Resolved(key));
+            .push(QueryResult::Resolved(rules::TraversedTo::Referenced(key)));
         Ok(())
     }
 }
@@ -1246,12 +1406,15 @@ fn try_handle_function_call(
 
                 let extracted_expr = match args[num-2] {
                     QueryResult::Literal(PathAwareValue::String((_, s))) => s,
-                    QueryResult::Resolved(PathAwareValue::String((_, s))) => s,
+                    QueryResult::Resolved(TraversedTo::Owned( PathAwareValue::String((_,  ref s)))) => s,
+                    QueryResult::Resolved(TraversedTo::Referenced(PathAwareValue::String((_,  s)))) => s,
                     _ => return Err(Error::ParseError(String::from("regex_replace function requires the second argument to be string literal, but received a variable")))
                 };
 
                 let replaced_expr = match args[num-1] {
-                    QueryResult::Literal(PathAwareValue::String((_, s))) | QueryResult::Resolved(PathAwareValue::String((_, s))) => s,
+                    QueryResult::Resolved(TraversedTo::Owned( PathAwareValue::String((_,  ref s)))) => s,
+                    QueryResult::Resolved(TraversedTo::Referenced(PathAwareValue::String((_,  s)))) => s,
+                    QueryResult::Literal(PathAwareValue::String((_, s))) => s,
                     _ => return Err(Error::ParseError(String::from("regex_replace function requires the third argument to be string literal, but received a variable")))
                 };
 
@@ -1267,8 +1430,19 @@ fn try_handle_function_call(
 
             num => {
                 let from = match args[num - 2] {
-                    QueryResult::Resolved(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
-                    QueryResult::Resolved(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
+                    QueryResult::Resolved(TraversedTo::Owned(PathAwareValue::Int((_, n)))) => {
+                        usize::from(n as u16)
+                    }
+                    QueryResult::Resolved(TraversedTo::Owned(PathAwareValue::Float((_, n)))) => {
+                        usize::from(n as u16)
+                    }
+                    QueryResult::Resolved(TraversedTo::Referenced(PathAwareValue::Int((_, n)))) => {
+                        usize::from(*n as u16)
+                    }
+                    QueryResult::Resolved(TraversedTo::Referenced(PathAwareValue::Float((
+                        _,
+                        n,
+                    )))) => usize::from(*n as u16),
                     QueryResult::Literal(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
                     QueryResult::Literal(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
                     _ => {
@@ -1279,8 +1453,19 @@ fn try_handle_function_call(
                 };
 
                 let to = match args[num - 1] {
-                    QueryResult::Resolved(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
-                    QueryResult::Resolved(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
+                    QueryResult::Resolved(TraversedTo::Owned(PathAwareValue::Int((_, n)))) => {
+                        usize::from(n as u16)
+                    }
+                    QueryResult::Resolved(TraversedTo::Owned(PathAwareValue::Float((_, n)))) => {
+                        usize::from(n as u16)
+                    }
+                    QueryResult::Resolved(TraversedTo::Referenced(PathAwareValue::Int((_, n)))) => {
+                        usize::from(*n as u16)
+                    }
+                    QueryResult::Resolved(TraversedTo::Referenced(PathAwareValue::Float((
+                        _,
+                        n,
+                    )))) => usize::from(*n as u16),
                     QueryResult::Literal(PathAwareValue::Int((_, n))) => usize::from(*n as u16),
                     QueryResult::Literal(PathAwareValue::Float((_, n))) => usize::from(*n as u16),
                     _ => {
@@ -1305,7 +1490,13 @@ fn try_handle_function_call(
                 let delimiter =
                     match args[num - 1] {
                         QueryResult::Literal(PathAwareValue::String((_, s))) => s,
-                        QueryResult::Resolved(PathAwareValue::String((_, s))) => s,
+                        QueryResult::Resolved(TraversedTo::Owned(PathAwareValue::String((
+                            _,
+                            ref s,
+                        )))) => s,
+                        QueryResult::Resolved(TraversedTo::Referenced(PathAwareValue::String(
+                            (_, s),
+                        ))) => s,
 
                         _ => return Err(Error::ParseError(String::from(
                             "join function requires the 2nd argument to be either a char or string",
@@ -1475,7 +1666,7 @@ pub(crate) struct RuleReport<'value> {
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct UnaryComparison<'value> {
-    pub(crate) value: &'value PathAwareValue,
+    pub(crate) value: TraversedTo<'value>,
     pub(crate) comparison: (CmpOperator, bool),
 }
 
@@ -1493,10 +1684,10 @@ pub(crate) enum UnaryCheck<'value> {
 }
 
 impl<'value> ValueComparisons<'value> for UnaryCheck<'value> {
-    fn value_from(&self) -> Option<&'value PathAwareValue> {
+    fn value_from(&self) -> Option<TraversedTo<'value>> {
         match self {
-            UnaryCheck::UnResolved(ur) => Some(ur.value.traversed_to.borrow_inner()),
-            UnaryCheck::Resolved(uc) => Some(uc.value),
+            UnaryCheck::UnResolved(ur) => Some(ur.value.traversed_to.clone()),
+            UnaryCheck::Resolved(uc) => Some(uc.value.clone()),
             UnaryCheck::UnResolvedContext(_) => None,
         }
     }
@@ -1511,15 +1702,15 @@ pub(crate) struct UnaryReport<'value> {
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct BinaryComparison<'value> {
-    pub(crate) from: &'value PathAwareValue,
-    pub(crate) to: &'value PathAwareValue,
+    pub(crate) from: TraversedTo<'value>,
+    pub(crate) to: TraversedTo<'value>,
     pub(crate) comparison: (CmpOperator, bool),
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct InComparison<'value> {
-    pub(crate) from: &'value PathAwareValue,
-    pub(crate) to: Vec<&'value PathAwareValue>,
+    pub(crate) from: TraversedTo<'value>,
+    pub(crate) to: Vec<TraversedTo<'value>>,
     pub(crate) comparison: (CmpOperator, bool),
 }
 
@@ -1531,17 +1722,17 @@ pub(crate) enum BinaryCheck<'value> {
 }
 
 impl<'value> ValueComparisons<'value> for BinaryCheck<'value> {
-    fn value_from(&self) -> Option<&'value PathAwareValue> {
+    fn value_from(&self) -> Option<TraversedTo<'value>> {
         match self {
-            BinaryCheck::UnResolved(vur) => Some(vur.value.traversed_to.borrow_inner()),
-            BinaryCheck::Resolved(res) => Some(res.from),
-            BinaryCheck::InResolved(inr) => Some(inr.from),
+            BinaryCheck::UnResolved(vur) => Some(vur.value.traversed_to.clone()),
+            BinaryCheck::Resolved(res) => Some(res.from.clone()),
+            BinaryCheck::InResolved(inr) => Some(inr.from.clone()),
         }
     }
 
-    fn value_to(&self) -> Option<&'value PathAwareValue> {
+    fn value_to(&self) -> Option<TraversedTo<'value>> {
         match self {
-            BinaryCheck::Resolved(bc) => Some(bc.to),
+            BinaryCheck::Resolved(bc) => Some(bc.to.clone()),
             _ => None,
         }
     }
@@ -1561,21 +1752,21 @@ pub(crate) enum GuardClauseReport<'value> {
 }
 
 pub(crate) trait ValueComparisons<'from> {
-    fn value_from(&self) -> Option<&'from PathAwareValue>;
-    fn value_to(&self) -> Option<&'from PathAwareValue> {
+    fn value_from(&self) -> Option<TraversedTo<'from>>;
+    fn value_to(&self) -> Option<TraversedTo<'from>> {
         None
     }
 }
 
 impl<'value> ValueComparisons<'value> for GuardClauseReport<'value> {
-    fn value_from(&self) -> Option<&'value PathAwareValue> {
+    fn value_from(&self) -> Option<TraversedTo<'value>> {
         match self {
             GuardClauseReport::Binary(br) => br.check.value_from(),
             GuardClauseReport::Unary(ur) => ur.check.value_from(),
         }
     }
 
-    fn value_to(&self) -> Option<&'value PathAwareValue> {
+    fn value_to(&self) -> Option<TraversedTo<'value>> {
         match self {
             GuardClauseReport::Binary(br) => br.check.value_to(),
             GuardClauseReport::Unary(ur) => ur.check.value_to(),
@@ -1596,9 +1787,9 @@ pub(crate) struct GuardBlockReport<'value> {
 }
 
 impl<'value> ValueComparisons<'value> for GuardBlockReport<'value> {
-    fn value_from(&self) -> Option<&'value PathAwareValue> {
+    fn value_from(&self) -> Option<TraversedTo<'value>> {
         if let Some(ur) = &self.unresolved {
-            return Some(ur.traversed_to.borrow_inner());
+            return Some(ur.traversed_to.clone());
         }
         None
     }
@@ -1624,7 +1815,7 @@ impl<'value> ClauseReport<'value> {
 }
 
 impl<'value> ValueComparisons<'value> for ClauseReport<'value> {
-    fn value_from(&self) -> Option<&'value PathAwareValue> {
+    fn value_from(&self) -> Option<TraversedTo<'value>> {
         match self {
             Self::Block(b) => b.value_from(),
             Self::Clause(c) => c.value_from(),
@@ -1632,7 +1823,7 @@ impl<'value> ValueComparisons<'value> for ClauseReport<'value> {
         }
     }
 
-    fn value_to(&self) -> Option<&'value PathAwareValue> {
+    fn value_to(&self) -> Option<TraversedTo<'value>> {
         match self {
             Self::Block(b) => b.value_to(),
             Self::Clause(c) => c.value_to(),
@@ -1958,7 +2149,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     ),
                                     UnaryCheck::Resolved(UnaryComparison {
                                         comparison: (*cmp, *not),
-                                        value: res,
+                                        value: res.clone(),
                                     })
                                 )
 
@@ -1978,7 +2169,6 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     })
                                 )
                             }
-                        QueryResult::Computed(_) => todo!(),
                         };
 
                     clauses.push(ClauseReport::Clause(GuardClauseReport::Unary(
@@ -2056,8 +2246,8 @@ fn report_all_failed_clauses_for_rules<'value>(
                                         clauses.push(ClauseReport::Clause(
                                             GuardClauseReport::Binary(BinaryReport {
                                                 check: BinaryCheck::Resolved(BinaryComparison {
-                                                    to: to_res,
-                                                    from: res,
+                                                    to: to_res.clone(),
+                                                    from: res.clone(),
                                                     comparison: (*cmp, *not),
                                                 }),
                                                 context: current.context.to_string(),
@@ -2090,11 +2280,9 @@ fn report_all_failed_clauses_for_rules<'value>(
                                             }),
                                         ));
                                     }
-                                    QueryResult::Computed(_) => todo!(),
                                 }
                             }
                         }
-                        QueryResult::Computed(_) => todo!(),
                     }
                 }
 
@@ -2124,24 +2312,20 @@ fn report_all_failed_clauses_for_rules<'value>(
                                 //     std::convert::identity,
                                 // ),
                                 from: match from.resolved() {
-                                    Some(val) => val,
+                                    Some(val) => rules::TraversedTo::Referenced(val),
                                     None => match from.unresolved_traversed_to() {
-                                        Some(val) => val,
+                                        Some(val) => rules::TraversedTo::Referenced(val),
                                         None => unreachable!(),
                                     },
                                 },
                                 to: to
-                                    .iter()
+                                    .into_iter()
                                     .filter(|t| matches!(t, QueryResult::Resolved(_)))
                                     .map(|t| match t {
-                                        QueryResult::Resolved(v) => v,
-                                        QueryResult::UnResolved(ur) => {
-                                            ur.traversed_to.borrow_inner()
-                                        }
-                                        QueryResult::Literal(l) => *l,
-                                        QueryResult::Computed(_) => todo!(),
+                                        QueryResult::Resolved(v) => v.clone(),
+                                        _ => unreachable!(),
                                     })
-                                    .collect(),
+                                    .collect::<Vec<_>>(),
                                 comparison: *comparison,
                             }),
                         },

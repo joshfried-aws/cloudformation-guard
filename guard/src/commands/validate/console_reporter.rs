@@ -228,7 +228,7 @@ fn pprint_failed_sub_tree(
                     let to_result = match to {
                         Some(to) => match to {
                             QueryResult::Literal(_) => unreachable!(),
-                            QueryResult::Resolved(to_res) => Some(*to_res),
+                            QueryResult::Resolved(to_res) => Some(to_res),
 
                             QueryResult::UnResolved(to_unres) => {
                                 writeln!(

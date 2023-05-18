@@ -158,7 +158,7 @@ pub(crate) struct UnResolved<'value> {
     pub(crate) reason: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Eq, Hash)]
 pub(crate) enum TraversedTo<'value> {
     Owned(PathAwareValue),
     Referenced(&'value PathAwareValue),
@@ -179,11 +179,7 @@ impl<'value> Display for TraversedTo<'value> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("Path={} Value=", self.self_path()))?;
 
-        ValueOnlyDisplay(match self {
-            TraversedTo::Owned(v) => v,
-            TraversedTo::Referenced(v) => v,
-        })
-        .fmt(f)
+        ValueOnlyDisplay(self.clone()).fmt(f)
     }
 }
 
@@ -202,18 +198,60 @@ impl<'value> TraversedTo<'value> {
         }
     }
 
+    pub(crate) fn borrow_inner2(&self) -> &PathAwareValue {
+        match self {
+            TraversedTo::Owned(val) => val,
+            TraversedTo::Referenced(val) => val,
+        }
+    }
+
     pub(crate) fn clone_inner(&self) -> PathAwareValue {
         match self {
             TraversedTo::Owned(val) => val.clone(),
             TraversedTo::Referenced(val) => (*val).clone(),
         }
     }
+
+    pub(crate) fn type_info(&self) -> &'static str {
+        match self {
+            TraversedTo::Owned(v) => v.type_info(),
+            TraversedTo::Referenced(v) => v.type_info(),
+        }
+    }
+
+    pub(crate) fn is_list(&self) -> bool {
+        match self {
+            TraversedTo::Owned(PathAwareValue::List((_, _)))
+            | TraversedTo::Referenced(PathAwareValue::List((_, _))) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_map(&self) -> bool {
+        match self {
+            TraversedTo::Owned(PathAwareValue::Map((_, _)))
+            | TraversedTo::Referenced(PathAwareValue::Map((_, _))) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_null(&self) -> bool {
+        match self {
+            TraversedTo::Owned(PathAwareValue::Null(_))
+            | TraversedTo::Referenced(PathAwareValue::Null(_)) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_scalar(&self) -> bool {
+        !self.is_list() && !self.is_map()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) enum QueryResult<'value> {
     Literal(&'value PathAwareValue),
-    Resolved(&'value PathAwareValue),
+    Resolved(TraversedTo<'value>),
     UnResolved(UnResolved<'value>),
     // Computed(PathAwareValue),
 }
@@ -221,7 +259,7 @@ pub(crate) enum QueryResult<'value> {
 impl<'value> QueryResult<'value> {
     pub(crate) fn resolved(&self) -> Option<&'value PathAwareValue> {
         if let QueryResult::Resolved(res) = self {
-            return Some(res);
+            return Some(res.borrow_inner());
         }
 
         None

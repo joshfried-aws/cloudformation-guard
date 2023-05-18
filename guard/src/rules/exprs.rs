@@ -1,4 +1,4 @@
-use crate::rules::values::*;
+use crate::rules::{self, values::*};
 
 use crate::rules::display::ValueOnlyDisplay;
 use crate::rules::path_value::PathAwareValue;
@@ -380,7 +380,9 @@ impl<'loc> std::fmt::Display for LetValue<'loc> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             LetValue::AccessClause(acc) => acc.fmt(f)?,
-            LetValue::Value(v) => write!(f, "{}", ValueOnlyDisplay(v))?,
+            LetValue::Value(v) => {
+                write!(f, "{}", ValueOnlyDisplay(rules::TraversedTo::Referenced(v)))?
+            }
             LetValue::FunctionCall(call_expr) => write!(f, "{}", call_expr)?,
         }
         Ok(())
