@@ -154,7 +154,7 @@ where
         match each {
             QueryResult::Literal(l) | QueryResult::Resolved(l) => r(&mut aggregated, l),
             QueryResult::UnResolved(ur) => c(ur),
-            QueryResult::Computed(l) => r(&mut aggregated, l),
+            // QueryResult::Computed(l) => r(&mut aggregated, l),
         }
     }
     aggregated

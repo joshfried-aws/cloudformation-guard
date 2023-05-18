@@ -215,7 +215,7 @@ pub(crate) enum QueryResult<'value> {
     Literal(&'value PathAwareValue),
     Resolved(&'value PathAwareValue),
     UnResolved(UnResolved<'value>),
-    Computed(PathAwareValue),
+    // Computed(PathAwareValue),
 }
 
 impl<'value> QueryResult<'value> {
@@ -227,13 +227,13 @@ impl<'value> QueryResult<'value> {
         None
     }
 
-    pub(crate) fn computed(&self) -> Option<&PathAwareValue> {
-        if let QueryResult::Computed(res) = self {
-            return Some(res);
-        }
+    // pub(crate) fn computed(&self) -> Option<&PathAwareValue> {
+    //     if let QueryResult::Computed(res) = self {
+    //         return Some(res);
+    //     }
 
-        None
-    }
+    //     None
+    // }
 
     pub(crate) fn unresolved_traversed_to(&self) -> Option<&'value PathAwareValue> {
         if let QueryResult::UnResolved(res) = self {

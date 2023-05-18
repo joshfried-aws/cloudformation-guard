@@ -1794,14 +1794,13 @@ fn test_multiple_valued_clause_reporting() -> Result<()> {
                                         == "/Resources/failed/Properties/Name",
                             );
                         }
-                        QueryResult::Computed(res) => {
-                            assert!(
-                                res.self_path().0.as_str() == "/Resources/second/Properties/Name"
-                                    || res.self_path().0.as_str()
-                                        == "/Resources/failed/Properties/Name",
-                            );
-                        }
-
+                        // QueryResult::Computed(res) => {
+                        //     assert!(
+                        //         res.self_path().0.as_str() == "/Resources/second/Properties/Name"
+                        //             || res.self_path().0.as_str()
+                        //                 == "/Resources/failed/Properties/Name",
+                        //     );
+                        // }
                         _ => unreachable!(),
                     }
                 }
@@ -2550,10 +2549,10 @@ fn filter_based_join_clauses_failures_and_skips() -> Result<()> {
 
                     let path = match from.resolved() {
                         Some(v) => v,
-                        None => match from.computed() {
-                            Some(v) => v,
-                            None => unreachable!(),
-                        },
+                        // None => match from.computed() {
+                        /* Some(v) => v, */
+                        None => unreachable!(),
+                        // },
                     }
                     .self_path()
                     .0

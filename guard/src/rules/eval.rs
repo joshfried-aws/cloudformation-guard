@@ -11,7 +11,7 @@ mod operators;
 fn exists_operation(value: &QueryResult<'_>) -> Result<bool> {
     // Ok(matches!(value, QueryResult::UnResolved(_))) NOTE: can clean this up to look like this
     Ok(match value {
-        QueryResult::Resolved(_) | QueryResult::Literal(_) | QueryResult::Computed(_) => true,
+        QueryResult::Resolved(_) | QueryResult::Literal(_) => true,
         QueryResult::UnResolved(_) => false,
     })
 }
@@ -23,7 +23,7 @@ fn element_empty_operation(value: &QueryResult<'_>) -> Result<bool> {
         // !EXISTS is the same as EMPTY
         //
         QueryResult::UnResolved(_) => Ok(true),
-        QueryResult::Computed(value) => handle_empty_operation(value),
+        // QueryResult::Computed(value) => handle_empty_operation(value),
     }
 }
 
@@ -57,10 +57,10 @@ macro_rules! is_type_fn {
                 }
 
                 QueryResult::UnResolved(_) => false,
-                QueryResult::Computed(resolved) => match resolved {
-                    $type_ => true,
-                    _ => false,
-                },
+                // QueryResult::Computed(resolved) => match resolved {
+                //     $type_ => true,
+                //     _ => false,
+                // },
             })
         }
     };
@@ -242,27 +242,26 @@ fn unary_operation<'r, 'l: 'r, 'loc: 'l>(
                                     false => Status::PASS, // !EISTS == EMPTY so PASS
                                 },
                             )
-                        }
-                        QueryResult::Computed(res) => {
-                            {
-                                //
-                                // NULL == EMPTY
-                                //
-                                let status = if cmp.1 {
-                                    // Not empty
-                                    !res.is_null()
-                                } else {
-                                    res.is_null()
-                                };
-                                (
-                                    QueryResult::Computed(res),
-                                    match status {
-                                        true => Status::PASS,  // not_empty
-                                        false => Status::FAIL, // fail not_empty
-                                    },
-                                )
-                            }
-                        }
+                        } // QueryResult::Computed(res) => {
+                          //     {
+                          //         //
+                          //         // NULL == EMPTY
+                          //         //
+                          //         let status = if cmp.1 {
+                          //             // Not empty
+                          //             !res.is_null()
+                          //         } else {
+                          //             res.is_null()
+                          //         };
+                          //         (
+                          //             QueryResult::Computed(res),
+                          //             match status {
+                          //                 true => Status::PASS,  // not_empty
+                          //                 false => Status::FAIL, // fail not_empty
+                          //             },
+                          //         )
+                          //     }
+                          // }
                     };
                     let status = if inverse {
                         match status {
@@ -564,8 +563,7 @@ where
                     rhs: each_rhs.clone(),
                     lhs,
                 }));
-            }
-            QueryResult::Computed(_) => todo!(),
+            } // QueryResult::Computed(_) => todo!(),
         }
     }
     Ok(statues)
@@ -1939,7 +1937,7 @@ pub(in crate::rules) fn eval_type_block_clause<'value, 'loc: 'value>(
             }
 
             QueryResult::UnResolved(_) => unreachable!(),
-            QueryResult::Computed(_) => todo!(),
+            // QueryResult::Computed(_) => todo!(),
         }
     }
 
