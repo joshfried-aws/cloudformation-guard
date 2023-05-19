@@ -144,7 +144,6 @@ where
             QueryResult::Literal(l) => r(&mut aggregated, rules::TraversedTo::Referenced(l)),
             QueryResult::Resolved(l) => r(&mut aggregated, l.clone()),
             QueryResult::UnResolved(ur) => c(ur),
-            // QueryResult::Computed(l) => r(&mut aggregated, l),
         }
     }
     aggregated

@@ -2314,7 +2314,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                 from: match from.resolved() {
                                     Some(val) => val,
                                     None => match from.unresolved_traversed_to() {
-                                        Some(val) => rules::TraversedTo::Referenced(val),
+                                        Some(val) => val,
                                         None => unreachable!(),
                                     },
                                 },

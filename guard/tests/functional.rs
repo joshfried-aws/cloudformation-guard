@@ -107,13 +107,13 @@ mod functional_tests {
                                               false
                                             ],
                                             "from": {
-                                              "Computed": {
+                                              "Resolved": {
                                                 "path": "/Resources/VPC/Properties/AuthorizationType",
                                                 "value": "10.0.0.0/24"
                                               }
                                             },
                                             "to": {
-                                              "Computed": {
+                                              "Resolved": {
                                                 "path": "",
                                                 "value": "NONE"
                                               }

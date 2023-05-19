@@ -200,6 +200,15 @@ impl<'value> TraversedTo<'value> {
         }
     }
 
+    pub(crate) fn path_as_string(&self) -> String {
+        match self {
+            TraversedTo::Owned(val) => val.self_path(),
+            TraversedTo::Referenced(val) => val.self_path(),
+        }
+        .0
+        .to_owned()
+    }
+
     pub(crate) fn borrow_inner(&self) -> &'value PathAwareValue {
         match self {
             TraversedTo::Referenced(val) => val,
@@ -255,7 +264,6 @@ pub(crate) enum QueryResult<'value> {
     Literal(&'value PathAwareValue),
     Resolved(TraversedTo<'value>),
     UnResolved(UnResolved<'value>),
-    // Computed(PathAwareValue),
 }
 
 impl<'value> QueryResult<'value> {
@@ -267,10 +275,11 @@ impl<'value> QueryResult<'value> {
         None
     }
 
-    pub(crate) fn unresolved_traversed_to(&self) -> Option<&'value PathAwareValue> {
+    pub(crate) fn unresolved_traversed_to(&self) -> Option<TraversedTo<'value>> {
         if let QueryResult::UnResolved(res) = self {
-            return Some(res.traversed_to.borrow_inner());
+            return Some(res.traversed_to.clone());
         }
+
         None
     }
 }

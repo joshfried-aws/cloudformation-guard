@@ -194,18 +194,7 @@ fn pprint_failed_sub_tree(
                                 err=error_message,
                                 msg=custom_message
                             )?;
-                        } // QueryResult::Computed(computed) => {
-                          //     writeln!(
-                          //         writer,
-                          //         "{}{}Check was not compliant as property [{prop}] {cmp_msg}.{err}{msg}",
-                          //         prefix,
-                          //         prefix_current,
-                          //         prop=computed.self_path(),
-                          //         cmp_msg=cmp_msg,
-                          //         err=error_message,
-                          //         msg=custom_message
-                          //     )?;
-                          // }
+                        }
                     }
                 }
 
@@ -242,7 +231,7 @@ fn pprint_failed_sub_tree(
                                         msg=custom_message
                                     )?;
                                 return Ok(());
-                            } // QueryResult::Computed(computed) => Some(computed),
+                            }
                         },
 
                         None => None,
@@ -283,27 +272,7 @@ fn pprint_failed_sub_tree(
                                 err=error_message,
                                 msg=custom_message
                             )?;
-                        } // QueryResult::Computed(computed) => {
-                          //     writeln!(
-                          //         writer,
-                          //         "{}{}Check was not compliant as property value [{from}] {op_msg} value [{to}].{err}{msg}",
-                          //         prefix,
-                          //         prefix_current,
-                          //         from=computed,
-                          //         to=to_result.map_or("NULL".to_string(), |t| format!("{}", t)),
-                          //         op_msg=match cmp {
-                          //             CmpOperator::Eq => if *not { "equal to" } else { "not equal to" },
-                          //             CmpOperator::Le => if *not { "less than equal to" } else { "not less than equal to" },
-                          //             CmpOperator::Lt => if *not { "less than" } else { "not less than" },
-                          //             CmpOperator::Ge => if *not { "greater than equal to" } else { "not greater than equal" },
-                          //             CmpOperator::Gt => if *not { "greater than" } else { "not greater than" },
-                          //             CmpOperator::In => if *not { "in" } else { "not in" },
-                          //             _ => unreachable!()
-                          //         },
-                          //         err=error_message,
-                          //         msg=custom_message
-                          //     )?;
-                          // }
+                        }
                     }
                 }
 

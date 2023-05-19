@@ -118,9 +118,7 @@ impl<'value> Display for QueryResult<'value> {
 
             QueryResult::UnResolved(ur) => {
                 f.write_fmt(format_args!("(unresolved, {})", ur.traversed_to))?;
-            } // QueryResult::Computed(c) => {
-              //     f.write_fmt(format_args!("(resolved, {})", c))?;
-              // }
+            }
         }
         Ok(())
     }
@@ -152,7 +150,7 @@ impl<'value> Display for ClauseCheck<'value> {
                     missing
                         .from
                         .unresolved_traversed_to()
-                        .map_or("", |p| p.self_path().0.as_str())
+                        .map_or(String::from(""), |p| p.path_as_string())
                 ))?;
             }
 
