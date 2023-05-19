@@ -13,28 +13,7 @@ pub(crate) fn url_decode(
     let mut aggr = Vec::with_capacity(args.len());
     for entry in args.iter() {
         match entry {
-            QueryResult::Resolved(val) => {
-                let val = match val {
-                    TraversedTo::Owned(val) => val,
-                    TraversedTo::Referenced(val) => *val,
-                };
-                match val {
-                    PathAwareValue::String((path, val)) => {
-                        if let Ok(aggr_str) = urlencoding::decode(val.as_str()) {
-                            aggr.push(Some(PathAwareValue::String((
-                                path.clone(),
-                                aggr_str.into_owned(),
-                            ))));
-                        } else {
-                            aggr.push(None);
-                        }
-                    }
-                    _ => {
-                        aggr.push(None);
-                    }
-                }
-            }
-            QueryResult::Literal(val) => match *val {
+            QueryResult::Resolved(val) => match val.borrow_inner2() {
                 PathAwareValue::String((path, val)) => {
                     if let Ok(aggr_str) = urlencoding::decode(val.as_str()) {
                         aggr.push(Some(PathAwareValue::String((
@@ -49,6 +28,16 @@ pub(crate) fn url_decode(
                     aggr.push(None);
                 }
             },
+            QueryResult::Literal(PathAwareValue::String((path, val))) => {
+                if let Ok(aggr_str) = urlencoding::decode(val.as_str()) {
+                    aggr.push(Some(PathAwareValue::String((
+                        path.clone(),
+                        aggr_str.into_owned(),
+                    ))));
+                } else {
+                    aggr.push(None);
+                }
+            }
             _ => {
                 aggr.push(None);
             }
@@ -64,11 +53,7 @@ pub(crate) fn json_parse(
     for entry in args.iter() {
         match entry {
             QueryResult::Resolved(v) => {
-                let v = match v {
-                    TraversedTo::Owned(val) => val,
-                    TraversedTo::Referenced(val) => *val,
-                };
-                if let PathAwareValue::String((path, val)) = v {
+                if let PathAwareValue::String((path, val)) = v.borrow_inner2() {
                     let value = serde_yaml::from_str::<serde_yaml::Value>(val)?;
                     aggr.push(Some(PathAwareValue::try_from((&value, path.clone()))?));
                 } else {
@@ -98,12 +83,7 @@ pub(crate) fn regex_replace(
     for entry in args.iter() {
         match entry {
             QueryResult::Resolved(v) => {
-                let v = match v {
-                    TraversedTo::Owned(val) => val,
-                    TraversedTo::Referenced(val) => *val,
-                };
-
-                if let PathAwareValue::String((path, val)) = v {
+                if let PathAwareValue::String((path, val)) = v.borrow_inner2() {
                     let regex = Regex::new(extract_expr)?;
                     let mut replaced = String::with_capacity(replace_expr.len() * 2);
                     for cap in regex.captures_iter(val) {
@@ -114,17 +94,13 @@ pub(crate) fn regex_replace(
                     aggr.push(None);
                 }
             }
-            QueryResult::Literal(v) => {
-                if let PathAwareValue::String((path, val)) = v {
-                    let regex = Regex::new(extract_expr)?;
-                    let mut replaced = String::with_capacity(replace_expr.len() * 2);
-                    for cap in regex.captures_iter(val) {
-                        cap?.expand(replace_expr, &mut replaced);
-                    }
-                    aggr.push(Some(PathAwareValue::String((path.clone(), replaced))));
-                } else {
-                    aggr.push(None);
+            QueryResult::Literal(PathAwareValue::String((path, val))) => {
+                let regex = Regex::new(extract_expr)?;
+                let mut replaced = String::with_capacity(replace_expr.len() * 2);
+                for cap in regex.captures_iter(val) {
+                    cap?.expand(replace_expr, &mut replaced);
                 }
+                aggr.push(Some(PathAwareValue::String((path.clone(), replaced))));
             }
             _ => {
                 aggr.push(None);
@@ -143,12 +119,7 @@ pub(crate) fn substring(
     for entry in args.iter() {
         match entry {
             QueryResult::Resolved(v) => {
-                let v = match v {
-                    TraversedTo::Owned(val) => val,
-                    TraversedTo::Referenced(val) => *val,
-                };
-
-                if let PathAwareValue::String((path, val)) = v {
+                if let PathAwareValue::String((path, val)) = v.borrow_inner2() {
                     if !val.is_empty() && from < to && from <= val.len() && to <= val.len() {
                         let sub = val.as_str().slice(from..to).to_string();
                         aggr.push(Some(PathAwareValue::String((path.clone(), sub))));
@@ -159,14 +130,10 @@ pub(crate) fn substring(
                     aggr.push(None);
                 }
             }
-            QueryResult::Literal(v) => {
-                if let PathAwareValue::String((path, val)) = v {
-                    if !val.is_empty() && from < to && from <= val.len() && to <= val.len() {
-                        let sub = val.as_str().slice(from..to).to_string();
-                        aggr.push(Some(PathAwareValue::String((path.clone(), sub))));
-                    } else {
-                        aggr.push(None);
-                    }
+            QueryResult::Literal(PathAwareValue::String((path, val))) => {
+                if !val.is_empty() && from < to && from <= val.len() && to <= val.len() {
+                    let sub = val.as_str().slice(from..to).to_string();
+                    aggr.push(Some(PathAwareValue::String((path.clone(), sub))));
                 } else {
                     aggr.push(None);
                 }
@@ -200,15 +167,11 @@ pub(crate) fn to_upper(
                     aggr.push(None);
                 }
             }
-            QueryResult::Literal(v) => {
-                if let PathAwareValue::String((path, val)) = v {
-                    aggr.push(Some(PathAwareValue::String((
-                        path.clone(),
-                        val.to_uppercase(),
-                    ))));
-                } else {
-                    aggr.push(None);
-                }
+            QueryResult::Literal(PathAwareValue::String((path, val))) => {
+                aggr.push(Some(PathAwareValue::String((
+                    path.clone(),
+                    val.to_uppercase(),
+                ))));
             }
             _ => {
                 aggr.push(None);
@@ -225,12 +188,7 @@ pub(crate) fn to_lower(
     for entry in args.iter() {
         match entry {
             QueryResult::Resolved(v) => {
-                let v = match v {
-                    TraversedTo::Owned(val) => val,
-                    TraversedTo::Referenced(val) => *val,
-                };
-
-                if let PathAwareValue::String((path, val)) = v {
+                if let PathAwareValue::String((path, val)) = v.borrow_inner2() {
                     aggr.push(Some(PathAwareValue::String((
                         path.clone(),
                         val.to_lowercase(),
@@ -239,15 +197,11 @@ pub(crate) fn to_lower(
                     aggr.push(None);
                 }
             }
-            QueryResult::Literal(v) => {
-                if let PathAwareValue::String((path, val)) = v {
-                    aggr.push(Some(PathAwareValue::String((
-                        path.clone(),
-                        val.to_lowercase(),
-                    ))));
-                } else {
-                    aggr.push(None);
-                }
+            QueryResult::Literal(PathAwareValue::String((path, val))) => {
+                aggr.push(Some(PathAwareValue::String((
+                    path.clone(),
+                    val.to_lowercase(),
+                ))));
             }
             _ => {
                 aggr.push(None);

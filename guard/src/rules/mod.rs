@@ -158,10 +158,19 @@ pub(crate) struct UnResolved<'value> {
     pub(crate) reason: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Eq, Hash)]
+#[derive(Debug, PartialEq, Serialize, Eq, Hash)]
 pub(crate) enum TraversedTo<'value> {
     Owned(PathAwareValue),
     Referenced(&'value PathAwareValue),
+}
+
+impl<'value> Clone for TraversedTo<'value> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Owned(val) => Self::Owned(val.clone()),
+            Self::Referenced(val) => Self::Referenced(val),
+        }
+    }
 }
 
 impl<'value> TryInto<(String, serde_json::Value)> for TraversedTo<'value> {

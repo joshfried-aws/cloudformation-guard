@@ -2319,7 +2319,7 @@ fn report_all_failed_clauses_for_rules<'value>(
                                     },
                                 },
                                 to: to
-                                    .into_iter()
+                                    .iter()
                                     .filter(|t| matches!(t, QueryResult::Resolved(_)))
                                     .map(|t| match t {
                                         QueryResult::Resolved(v) => v.clone(),
