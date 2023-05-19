@@ -2571,16 +2571,15 @@ fn filter_based_join_clauses_failures_and_skips() -> Result<()> {
                     assert_eq!(*status, Status::FAIL);
                     assert!(each.context.contains("Action") || each.context.contains("Principal"),);
 
-                    let path = match from.resolved() {
+                    let resolved = match from.resolved() {
                         Some(v) => v,
                         // None => match from.computed() {
                         /* Some(v) => v, */
                         None => unreachable!(),
                         // },
-                    }
-                    .self_path()
-                    .0
-                    .as_str();
+                    };
+
+                    let path = resolved.self_path().0.as_str();
 
                     assert!(
                         path == "/Resources/iam/Properties/PolicyDocument/Statement/Action"

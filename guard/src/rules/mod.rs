@@ -259,21 +259,13 @@ pub(crate) enum QueryResult<'value> {
 }
 
 impl<'value> QueryResult<'value> {
-    pub(crate) fn resolved(&self) -> Option<&'value PathAwareValue> {
+    pub(crate) fn resolved(&self) -> Option<TraversedTo<'value>> {
         if let QueryResult::Resolved(res) = self {
-            return Some(res.borrow_inner());
+            return Some(res.clone());
         }
 
         None
     }
-
-    // pub(crate) fn computed(&self) -> Option<&PathAwareValue> {
-    //     if let QueryResult::Computed(res) = self {
-    //         return Some(res);
-    //     }
-
-    //     None
-    // }
 
     pub(crate) fn unresolved_traversed_to(&self) -> Option<&'value PathAwareValue> {
         if let QueryResult::UnResolved(res) = self {
