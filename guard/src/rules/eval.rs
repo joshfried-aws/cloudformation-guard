@@ -1,7 +1,7 @@
 use super::exprs::*;
 use super::*;
 use crate::rules;
-use crate::rules::eval::operators::{Comparator, EvalResult};
+use crate::rules::eval::operators::Comparator;
 use crate::rules::eval_context::{block_scope, ValueScope};
 use crate::rules::path_value::compare_eq;
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ fn exists_operation(value: &QueryResult<'_>) -> Result<bool> {
 fn element_empty_operation(value: &QueryResult<'_>) -> Result<bool> {
     match value {
         QueryResult::Literal(value) => handle_empty_operation(value),
-        QueryResult::Resolved(value) => handle_empty_operation(&value.clone_inner()),
+        QueryResult::Resolved(value) => handle_empty_operation(value.borrow_inner2()),
         //
         // !EXISTS is the same as EMPTY
         //
@@ -55,7 +55,7 @@ macro_rules! is_type_fn {
                     _ => false,
                 },
 
-                QueryResult::Resolved(resolved) => match resolved.clone_inner() {
+                QueryResult::Resolved(resolved) => match resolved.borrow_inner2() {
                     $type_ => true,
                     _ => false,
                 },
@@ -501,10 +501,9 @@ where
 
                     Err(Error::NotComparable(reason)) => {
                         if lhs.is_list() {
-                            // && each_rhs_resolved.is_scalar() {
-                            if let PathAwareValue::List((_, inner)) = lhs.clone_inner() {
+                            if let PathAwareValue::List((_, inner)) = lhs.borrow_inner2() {
                                 for each in inner {
-                                    match cmp(&each, &each_rhs_resolved.clone_inner()) {
+                                    match cmp(each, each_rhs_resolved.borrow_inner2()) {
                                         Ok(outcome) => {
                                             statues.push(ComparisonResult::Comparable(
                                                 ComparisonWithRhs {
@@ -543,11 +542,11 @@ where
                         if lhs.is_scalar() {
                             if let QueryResult::Literal(_) = each_rhs {
                                 if let PathAwareValue::List((_, rhs)) =
-                                    each_rhs_resolved.clone_inner()
+                                    each_rhs_resolved.borrow_inner2()
                                 {
                                     if rhs.len() == 1 {
                                         let rhs_inner_single_element = &rhs[0];
-                                        match cmp(&lhs.clone_inner(), rhs_inner_single_element) {
+                                        match cmp(lhs.borrow_inner2(), rhs_inner_single_element) {
                                             Ok(outcome) => {
                                                 statues.push(ComparisonResult::Comparable(
                                                     ComparisonWithRhs {
@@ -597,7 +596,7 @@ where
                 }
             }
             QueryResult::Literal(each_rhs_resolved) => {
-                match cmp(&lhs.clone_inner(), each_rhs_resolved) {
+                match cmp(lhs.borrow_inner2(), each_rhs_resolved) {
                     Ok(outcome) => {
                         statues.push(ComparisonResult::Comparable(ComparisonWithRhs {
                             outcome,
@@ -658,7 +657,7 @@ where
                                 if let PathAwareValue::List((_, rhs)) = each_rhs_resolved {
                                     if rhs.len() == 1 {
                                         let rhs_inner_single_element = &rhs[0];
-                                        match cmp(&lhs.clone_inner(), rhs_inner_single_element) {
+                                        match cmp(lhs.borrow_inner2(), rhs_inner_single_element) {
                                             Ok(outcome) => {
                                                 statues.push(ComparisonResult::Comparable(
                                                     ComparisonWithRhs {
@@ -986,9 +985,7 @@ fn binary_operation<'query, 'value: 'query, 'loc: 'value>(
                                     custom_message: custom_message.clone(),
                                     comparison: cmp,
                                     from: QueryResult::UnResolved(UnResolved {
-                                        traversed_to: TraversedTo::Owned(
-                                            traversed_to.clone_inner(),
-                                        ),
+                                        traversed_to: traversed_to.clone(),
                                         remaining_query: remaining_query.clone(),
                                         reason: reason.clone(),
                                     }),
@@ -1746,7 +1743,6 @@ pub(in crate::rules) fn eval_guard_block_clause<'value, 'loc: 'value>(
                     }
                 }
             }
-            QueryResult::Resolved(_) => todo!(),
         }
     }
 

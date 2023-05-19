@@ -230,9 +230,12 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &rhs_scalar));
-                assert!(matches!(pair.lhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.lhs.clone_inner() {
+                assert!(std::ptr::eq(pair.rhs.borrow_inner2(), &rhs_scalar));
+                assert!(matches!(
+                    pair.lhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/0" || path == "/LHS/List/2");
                     assert!(v.as_str() == "ec2:*" || v.as_str() == "s3:*");
@@ -240,9 +243,12 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &rhs_scalar));
-                assert!(matches!(pair.lhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.lhs.clone_inner() {
+                assert!(std::ptr::eq(pair.rhs.borrow_inner2(), &rhs_scalar));
+                assert!(matches!(
+                    pair.lhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/1" || path == "/LHS/Scalar");
                     assert_eq!(v.as_str(), "*");
@@ -270,9 +276,12 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.lhs.clone_inner(), &rhs_scalar));
-                assert!(matches!(pair.rhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.rhs.clone_inner() {
+                assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &rhs_scalar));
+                assert!(matches!(
+                    pair.rhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.rhs.borrow_inner2() {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/0" || path == "/LHS/List/2");
                     assert!(v.as_str() == "ec2:*" || v.as_str() == "s3:*");
@@ -280,9 +289,12 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.lhs.clone_inner(), &rhs_scalar));
-                assert!(matches!(pair.rhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.rhs.clone_inner() {
+                assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &rhs_scalar));
+                assert!(matches!(
+                    pair.rhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.rhs.borrow_inner2() {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/1" || path == "/LHS/Scalar");
                     assert_eq!(v.as_str(), "*");
@@ -327,16 +339,19 @@ fn test_operator_in_scalar_literal_to_query_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert!(std::ptr::eq(&val.lhs.clone_inner(), &scalar_literal_value));
+                assert!(std::ptr::eq(val.lhs.borrow_inner2(), &scalar_literal_value));
                 assert!(std::ptr::eq(
-                    &val.rhs.clone_inner(),
+                    val.rhs.borrow_inner2(),
                     &scalar_query_list_value
                 ));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.lhs.clone_inner(), &scalar_literal_value));
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_query_value));
+                assert!(std::ptr::eq(
+                    pair.lhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
+                assert!(std::ptr::eq(pair.rhs.borrow_inner2(), &scalar_query_value));
             }
 
             rest => {
@@ -384,17 +399,20 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ListIn(l))) => {
                 assert!(l.diff.is_empty());
-                assert!(std::ptr::eq(&l.rhs.clone_inner(), &scalar_query_list_value));
-                assert!(std::ptr::eq(&l.lhs.clone_inner(), &list_literal_value));
+                assert!(std::ptr::eq(
+                    l.rhs.borrow_inner2(),
+                    &scalar_query_list_value
+                ));
+                assert!(std::ptr::eq(l.lhs.borrow_inner2(), &list_literal_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::NotComparable(nc)) => {
                 assert!(std::ptr::eq(
-                    &nc.pair.lhs.clone_inner(),
+                    nc.pair.lhs.borrow_inner2(),
                     &list_literal_value
                 ));
                 assert!(std::ptr::eq(
-                    &nc.pair.rhs.clone_inner(),
+                    nc.pair.rhs.borrow_inner2(),
                     &scalar_query_value
                 ));
             }
@@ -438,11 +456,17 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_literal_value));
-                assert!(matches!(pair.lhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.lhs.clone_inner() {
+                assert!(std::ptr::eq(
+                    pair.rhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
+                assert!(matches!(
+                    pair.lhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
                     if p.0.is_empty() {
-                        assert!(std::ptr::eq(&pair.lhs.clone_inner(), &scalar_query_value));
+                        assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &scalar_query_value));
                     } else {
                         assert_eq!(&p.0, "/1");
                         assert_eq!(v, "*");
@@ -454,9 +478,15 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
             // As "ec2*" in "*" FAILs
             //
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_literal_value));
-                assert!(matches!(pair.lhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.lhs.clone_inner() {
+                assert!(std::ptr::eq(
+                    pair.rhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
+                assert!(matches!(
+                    pair.lhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
                     assert_eq!(&p.0, "/0");
                     assert_eq!(v, "ec2*");
                 }
@@ -483,14 +513,17 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.lhs.clone_inner(), &scalar_literal_value));
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_query_value));
+                assert!(std::ptr::eq(
+                    pair.lhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
+                assert!(std::ptr::eq(pair.rhs.borrow_inner2(), &scalar_query_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert!(std::ptr::eq(&val.lhs.clone_inner(), &scalar_literal_value));
+                assert!(std::ptr::eq(val.lhs.borrow_inner2(), &scalar_literal_value));
                 assert!(std::ptr::eq(
-                    &val.rhs.clone_inner(),
+                    val.rhs.borrow_inner2(),
                     &scalar_query_list_value
                 ));
             }
@@ -538,16 +571,22 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
                 //
                 // RHS value pointer is the same
                 //
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_literal_value));
+                assert!(std::ptr::eq(
+                    pair.rhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert!(matches!(pair.lhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.lhs.clone_inner() {
+                assert!(matches!(
+                    pair.lhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
                     match p.0.as_str() {
                         "" => {
-                            assert!(std::ptr::eq(&pair.lhs.clone_inner(), &scalar_query_value));
+                            assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &scalar_query_value));
                         }
 
                         "/0" => {
@@ -629,16 +668,22 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 //
                 // RHS value pointer is the same
                 //
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_literal_value));
+                assert!(std::ptr::eq(
+                    pair.rhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert!(matches!(pair.lhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.lhs.clone_inner() {
+                assert!(matches!(
+                    pair.lhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
                     match p.0.as_str() {
                         "" => {
-                            assert!(std::ptr::eq(&pair.lhs.clone_inner(), &scalar_query_value));
+                            assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &scalar_query_value));
                         }
 
                         "/0" => {
@@ -663,13 +708,19 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 //
                 // RHS value pointer is the same
                 //
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_literal_value));
+                assert!(std::ptr::eq(
+                    pair.rhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert!(matches!(&pair.lhs.clone_inner(), PathAwareValue::String(_)));
-                if let PathAwareValue::String((p, v)) = pair.lhs.clone_inner() {
+                assert!(matches!(
+                    &pair.lhs.borrow_inner2(),
+                    PathAwareValue::String(_)
+                ));
+                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
                     assert_eq!(&p.0, "/3");
                     assert_eq!(v, "iam*");
                 }
@@ -1059,20 +1110,23 @@ fn test_operator_in_scalar_literal_to_query_ok_with_unresolved() -> crate::rules
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(&pair.lhs.clone_inner(), &scalar_literal_value));
-                assert!(std::ptr::eq(&pair.rhs.clone_inner(), &scalar_query_value));
+                assert!(std::ptr::eq(
+                    pair.lhs.borrow_inner2(),
+                    &scalar_literal_value
+                ));
+                assert!(std::ptr::eq(pair.rhs.borrow_inner2(), &scalar_query_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert!(std::ptr::eq(&val.lhs.clone_inner(), &scalar_literal_value));
+                assert!(std::ptr::eq(val.lhs.borrow_inner2(), &scalar_literal_value));
                 assert!(std::ptr::eq(
-                    &val.rhs.clone_inner(),
+                    val.rhs.borrow_inner2(),
                     &scalar_query_list_value
                 ));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(inur, lhs)) => {
-                assert!(std::ptr::eq(&lhs.clone_inner(), &scalar_literal_value));
+                assert!(std::ptr::eq(lhs.borrow_inner2(), &scalar_literal_value));
                 assert_eq!(ur, inur);
             }
 

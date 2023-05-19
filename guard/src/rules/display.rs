@@ -40,7 +40,7 @@ impl<'value> std::fmt::Debug for ValueOnlyDisplay<'value> {
 
 impl<'value> Display for ValueOnlyDisplay<'value> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self.0.clone_inner() {
+        match self.0.borrow_inner2() {
             PathAwareValue::Null(_path) => formatter.write_str("\"NULL\"")?,
             PathAwareValue::String((_path, value)) => {
                 formatter.write_fmt(format_args!("\"{}\"", value))?
@@ -90,9 +90,9 @@ impl<'value> Display for ValueOnlyDisplay<'value> {
                 formatter.write_str("}")?;
             }
 
-            PathAwareValue::RangeInt((_path, value)) => write_range(formatter, &value)?,
-            PathAwareValue::RangeFloat((_path, value)) => write_range(formatter, &value)?,
-            PathAwareValue::RangeChar((_path, value)) => write_range(formatter, &value)?,
+            PathAwareValue::RangeInt((_path, value)) => write_range(formatter, value)?,
+            PathAwareValue::RangeFloat((_path, value)) => write_range(formatter, value)?,
+            PathAwareValue::RangeChar((_path, value)) => write_range(formatter, value)?,
         }
         Ok(())
     }

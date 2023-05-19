@@ -516,9 +516,9 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                         );
                                 }
                                 QueryResult::Resolved(key) => {
-                                    let key = key.clone_inner();
+                                    let key = key.borrow_inner2();
                                     if let PathAwareValue::String((_, k)) = key {
-                                        if let Some(next) = map.values.get(&k) {
+                                        if let Some(next) = map.values.get(k) {
                                             acc.extend(query_retrieval_with_converter(
                                                 query_index + 1,
                                                 query,
@@ -578,7 +578,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                     }
                                 }
                                 QueryResult::Resolved(key) => {
-                                    let key = &key.clone_inner();
+                                    let key = key.borrow_inner2();
                                     if let PathAwareValue::String((_, k)) = key {
                                         if let Some(next) = map.values.get(k) {
                                             acc.extend(query_retrieval_with_converter(
@@ -1043,7 +1043,7 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                 for each_result in results {
                     match each_result {
                         (QueryResult::Resolved(key), Status::PASS) => {
-                            if let PathAwareValue::String((_, key_name)) = &key.clone_inner() {
+                            if let PathAwareValue::String((_, key_name)) = key.borrow_inner2() {
                                 selected.push(QueryResult::Resolved(
                                     rules::TraversedTo::Referenced(
                                         map.values.get(key_name.as_str()).unwrap(),

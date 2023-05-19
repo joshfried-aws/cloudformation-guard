@@ -157,12 +157,16 @@ fn flattened<'query, 'value, U>(
 where
     U: FnMut(&UnResolved<'value>),
 {
-    selected(query_results, c, |into, p| match p.clone_inner() {
+    selected(query_results, c, |into, p| match p.borrow_inner2() {
         PathAwareValue::List((_, list)) => {
-            into.extend(list.into_iter().map(TraversedTo::Owned).collect::<Vec<_>>());
+            into.extend(
+                list.iter()
+                    .map(|each| TraversedTo::Owned(each.clone()))
+                    .collect::<Vec<_>>(),
+            );
         }
 
-        rest => into.push(TraversedTo::Owned(rest)),
+        rest => into.push(TraversedTo::Owned(rest.clone())),
     })
 }
 
@@ -242,9 +246,9 @@ fn string_in<'value>(
     lhs_value: TraversedTo<'value>,
     rhs_value: TraversedTo<'value>,
 ) -> ValueEvalResult<'value> {
-    match (lhs_value.clone_inner(), rhs_value.clone_inner()) {
+    match (lhs_value.borrow_inner2(), rhs_value.borrow_inner2()) {
         (PathAwareValue::String((_, lhs)), PathAwareValue::String((_, rhs))) => {
-            if rhs.contains(&lhs) {
+            if rhs.contains(lhs) {
                 success(lhs_value, rhs_value)
             } else {
                 fail(lhs_value, rhs_value)
@@ -286,11 +290,11 @@ fn contained_in<'value>(
     lhs_value: TraversedTo<'value>,
     rhs_value: TraversedTo<'value>,
 ) -> ValueEvalResult<'value> {
-    match lhs_value.clone_inner() {
-        PathAwareValue::List((_, lhsl)) => match rhs_value.clone_inner() {
+    match lhs_value.borrow_inner2() {
+        PathAwareValue::List((_, lhsl)) => match rhs_value.borrow_inner2() {
             PathAwareValue::List((_, rhsl)) => {
                 if !rhsl.is_empty() && rhsl[0].is_list() {
-                    if rhsl.contains(&lhs_value.clone_inner()) {
+                    if rhsl.contains(lhs_value.borrow_inner2()) {
                         ValueEvalResult::ComparisonResult(ComparisonResult::Success(
                             Compare::ListIn(ListIn::new(vec![], lhs_value, rhs_value)),
                         ))
@@ -305,10 +309,11 @@ fn contained_in<'value>(
                     }
                 } else {
                     let diff = lhsl
-                        .into_iter()
+                        .iter()
                         .filter(|each| !rhsl.contains(each))
-                        .map(TraversedTo::Owned)
+                        .map(|each| TraversedTo::Owned(each.clone()))
                         .collect::<Vec<_>>();
+
                     if diff.is_empty() {
                         ValueEvalResult::ComparisonResult(ComparisonResult::Success(
                             Compare::ListIn(ListIn::new(diff, lhs_value, rhs_value)),
@@ -332,22 +337,22 @@ fn contained_in<'value>(
             }
         },
 
-        rest => match rhs_value.clone_inner() {
+        rest => match rhs_value.borrow_inner2() {
             PathAwareValue::List((_, rhsl)) => {
-                if rhsl.contains(&rest) {
+                if rhsl.contains(rest) {
                     ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(
-                        LhsRhsPair::new(rules::TraversedTo::Owned(rest), rhs_value),
+                        LhsRhsPair::new(rules::TraversedTo::Owned(rest.clone()), rhs_value),
                     )))
                 } else {
                     ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::ValueIn(
-                        LhsRhsPair::new(rules::TraversedTo::Owned(rest), rhs_value),
+                        LhsRhsPair::new(rules::TraversedTo::Owned(rest.clone()), rhs_value),
                     )))
                 }
             }
 
             rhs_rest => match_value(
-                rules::TraversedTo::Owned(rest),
-                rules::TraversedTo::Owned(rhs_rest),
+                rules::TraversedTo::Owned(rest.clone()),
+                rules::TraversedTo::Owned(rhs_rest.clone()),
                 compare_eq,
             ),
         },
@@ -629,7 +634,7 @@ impl Comparator for EqOperation {
                         results.extend(lhs_selected.iter().map(|lhs| {
                             ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(
                                 ur.clone(),
-                                rules::TraversedTo::Owned(lhs.clone_inner()),
+                                lhs.clone(),
                             ))
                         }))
                     },

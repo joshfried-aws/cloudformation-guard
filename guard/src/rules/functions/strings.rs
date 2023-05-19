@@ -219,9 +219,9 @@ pub(crate) fn join(
     for entry in args.iter() {
         match entry {
             QueryResult::Resolved(v) => {
-                if let PathAwareValue::String((_, val)) = v.clone_inner() {
+                if let PathAwareValue::String((_, val)) = v.borrow_inner2() {
                     aggr.push_str(delimiter);
-                    aggr.push_str(&val);
+                    aggr.push_str(val);
                 } else {
                     return Err(Error::IncompatibleError(format!(
                         "Joining non string values {}",

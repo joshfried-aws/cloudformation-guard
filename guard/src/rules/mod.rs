@@ -214,13 +214,6 @@ impl<'value> TraversedTo<'value> {
         }
     }
 
-    pub(crate) fn clone_inner(&self) -> PathAwareValue {
-        match self {
-            TraversedTo::Owned(val) => val.clone(),
-            TraversedTo::Referenced(val) => (*val).clone(),
-        }
-    }
-
     pub(crate) fn type_info(&self) -> &'static str {
         match self {
             TraversedTo::Owned(v) => v.type_info(),

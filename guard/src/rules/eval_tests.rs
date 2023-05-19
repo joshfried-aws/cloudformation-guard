@@ -474,7 +474,7 @@ fn each_lhs_value_eq_compare() -> Result<()> {
                 outcome,
             }) => {
                 if outcome {
-                    match (lhs.clone_inner(), rhs.clone_inner()) {
+                    match (lhs.borrow_inner2(), rhs.borrow_inner2()) {
                         (PathAwareValue::String((_, s1)), PathAwareValue::String((_, s2))) => {
                             assert_eq!(s1, s2);
                             assert!(!std::ptr::eq(&s1, &s2));
@@ -483,7 +483,7 @@ fn each_lhs_value_eq_compare() -> Result<()> {
                         (_, _) => unreachable!(),
                     }
                 } else {
-                    match (lhs.clone_inner(), rhs.clone_inner()) {
+                    match (lhs.borrow_inner2(), rhs.borrow_inner2()) {
                         (PathAwareValue::String((_, s1)), PathAwareValue::String((_, s2))) => {
                             assert_ne!(s1, s2);
                             assert!(!std::ptr::eq(&s1, &s2));

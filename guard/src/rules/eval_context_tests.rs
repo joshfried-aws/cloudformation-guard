@@ -99,7 +99,7 @@ fn no_query_return_root() -> Result<()> {
         QueryResult::Resolved(r) => r,
         _ => unreachable!(),
     };
-    assert!(std::ptr::eq(&path_value, &path_ref.clone_inner()));
+    assert!(std::ptr::eq(&path_value, path_ref.borrow_inner2()));
     Ok(())
 }
 
