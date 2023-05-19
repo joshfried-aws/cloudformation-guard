@@ -159,6 +159,7 @@ pub(crate) struct UnResolved<'value> {
 }
 
 #[derive(Debug, PartialEq, Serialize, Eq, Hash)]
+#[serde(untagged)]
 pub(crate) enum TraversedTo<'value> {
     Owned(PathAwareValue),
     Referenced(&'value PathAwareValue),
