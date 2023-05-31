@@ -1354,23 +1354,33 @@ fn try_handle_function_call(
                 if !matches!(args[0], QueryResult::Resolved(_)) {
                     // NOTE: not sure if this is
                     // necessary
-                    return Err(Error::ParseError(String::from("regex_replace function requires the first argument to be variable, but received a literal")));
+                    return Err(Error::ParseError(String::from(
+                        "regex_replace function requires the first argument to be variable, but received a literal"
+                    )));
                 }
 
                 let extracted_expr =  match &args[num - 2] {
                     QueryResult::Resolved(r) | QueryResult::Literal(r) => match &**r {
                         PathAwareValue::String((_, s)) => s,
-                    _ => return Err(Error::ParseError(String::from("regex_replace function requires the third argument to be string literal, but received a variable")))
+                    _ => return Err(Error::ParseError(String::from(
+                            "regex_replace function requires the third argument to be string literal, but received a variable"
+                        )))
                     }
-                    _ => return Err(Error::ParseError(String::from("regex_replace function requires the third argument to be string literal, but received a variable")))
+                    _ => return Err(Error::ParseError(String::from(
+                        "regex_replace function requires the third argument to be string literal, but received a variable"
+                    )))
                 };
 
                 let replaced_expr =  match &args[num - 1] {
                     QueryResult::Resolved(r) | QueryResult::Literal(r) => match &**r {
                         PathAwareValue::String((_, s)) => s,
-                    _ => return Err(Error::ParseError(String::from("regex_replace function requires the second argument to be string literal, but received a variable")))
+                        _ => return Err(Error::ParseError(String::from(
+                            "regex_replace function requires the second argument to be string literal, but received a variable"
+                        )))
                     }
-                    _ => return Err(Error::ParseError(String::from("regex_replace function requires the second argument to be string literal, but received a variable")))
+                    _ => return Err(Error::ParseError(String::from(
+                        "regex_replace function requires the second argument to be string literal, but received a variable"
+                    )))
                 };
                 regex_replace(&args[0..num - 2], extracted_expr, replaced_expr)?
             }
