@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::rc::Rc;
+
 use super::super::collections::count;
 use super::*;
 use crate::rules::eval_context::eval_context_tests::BasicQueryTesting;
@@ -25,7 +27,7 @@ fn test_json_parse() -> crate::rules::Result<()> {
     let value = PathAwareValue::try_from(serde_yaml::from_str::<serde_yaml::Value>(value_str)?)?;
 
     let mut eval = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let query =
@@ -65,7 +67,7 @@ fn test_regex_replace() -> crate::rules::Result<()> {
     let value = PathAwareValue::try_from(serde_yaml::from_str::<serde_yaml::Value>(value_str)?)?;
 
     let mut eval = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let query =
@@ -107,7 +109,7 @@ fn test_substring() -> crate::rules::Result<()> {
     let value = PathAwareValue::try_from(serde_yaml::from_str::<serde_yaml::Value>(value_str)?)?;
 
     let mut eval = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let query =

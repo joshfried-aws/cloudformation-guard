@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use crate::rules::errors::Error;
 use crate::rules::eval::LhsRhsPair;
-use crate::rules::{self, path_value::*, TraversedTo};
+use crate::rules::path_value::*;
 use crate::rules::{CmpOperator, QueryResult, UnResolved};
 
 #[derive(Clone, Debug)]
@@ -13,60 +15,60 @@ pub(crate) enum UnaryResult<'r> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct QueryIn<'value> {
-    pub(crate) diff: Vec<TraversedTo<'value>>,
-    pub(crate) lhs: Vec<TraversedTo<'value>>,
-    pub(crate) rhs: Vec<TraversedTo<'value>>,
+pub(crate) struct QueryIn {
+    pub(crate) diff: Vec<Rc<PathAwareValue>>,
+    pub(crate) lhs: Vec<Rc<PathAwareValue>>,
+    pub(crate) rhs: Vec<Rc<PathAwareValue>>,
 }
 
-impl<'value> QueryIn<'value> {
+impl QueryIn {
     fn new(
-        diff: Vec<TraversedTo<'value>>,
-        lhs: Vec<TraversedTo<'value>>,
-        rhs: Vec<TraversedTo<'value>>,
-    ) -> QueryIn<'value> {
+        diff: Vec<Rc<PathAwareValue>>,
+        lhs: Vec<Rc<PathAwareValue>>,
+        rhs: Vec<Rc<PathAwareValue>>,
+    ) -> QueryIn {
         QueryIn { lhs, rhs, diff }
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ListIn<'value> {
-    pub(crate) diff: Vec<TraversedTo<'value>>,
-    pub(crate) lhs: TraversedTo<'value>,
-    pub(crate) rhs: TraversedTo<'value>,
+pub(crate) struct ListIn {
+    pub(crate) diff: Vec<Rc<PathAwareValue>>,
+    pub(crate) lhs: Rc<PathAwareValue>,
+    pub(crate) rhs: Rc<PathAwareValue>,
 }
 
-impl<'value> ListIn<'value> {
+impl ListIn {
     fn new(
-        diff: Vec<TraversedTo<'value>>,
-        lhs: TraversedTo<'value>,
-        rhs: TraversedTo<'value>,
-    ) -> ListIn<'value> {
+        diff: Vec<Rc<PathAwareValue>>,
+        lhs: Rc<PathAwareValue>,
+        rhs: Rc<PathAwareValue>,
+    ) -> ListIn {
         ListIn { lhs, rhs, diff }
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Compare<'r> {
-    Value(LhsRhsPair<'r>),
-    QueryIn(QueryIn<'r>),
-    ListIn(ListIn<'r>),
-    ValueIn(LhsRhsPair<'r>),
+pub(crate) enum Compare {
+    Value(LhsRhsPair),
+    QueryIn(QueryIn),
+    ListIn(ListIn),
+    ValueIn(LhsRhsPair),
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ComparisonResult<'r> {
-    Success(Compare<'r>),
-    Fail(Compare<'r>),
-    NotComparable(NotComparable<'r>),
-    RhsUnresolved(UnResolved<'r>, TraversedTo<'r>),
+pub(crate) enum ComparisonResult {
+    Success(Compare),
+    Fail(Compare),
+    NotComparable(NotComparable),
+    RhsUnresolved(UnResolved, Rc<PathAwareValue>),
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum ValueEvalResult<'value> {
-    LhsUnresolved(UnResolved<'value>),
+    LhsUnresolved(UnResolved),
     UnaryResult(UnaryResult<'value>),
-    ComparisonResult(ComparisonResult<'value>),
+    ComparisonResult(ComparisonResult),
 }
 
 impl<'value> ValueEvalResult<'value> {
@@ -89,15 +91,15 @@ pub(crate) enum EvalResult<'value> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct NotComparable<'r> {
+pub(crate) struct NotComparable {
     pub(crate) reason: String,
-    pub(crate) pair: LhsRhsPair<'r>,
+    pub(crate) pair: LhsRhsPair,
 }
 
 // pub(super) fn resolved<'value, E, R>(
 //     qr: &QueryResult<'value>,
 //     err: E,
-// ) -> Result<&'value PathAwareValue, R>
+// ) -> Result<Rc<PathAwareValue>, R>
 // where
 //     E: Fn(UnResolved<'value>) -> R,
 // {
@@ -110,16 +112,13 @@ pub(crate) struct NotComparable<'r> {
 pub(crate) trait Comparator {
     fn compare<'value>(
         &self,
-        lhs: &[QueryResult<'value>],
-        rhs: &[QueryResult<'value>],
+        lhs: &[QueryResult],
+        rhs: &[QueryResult],
     ) -> crate::rules::Result<EvalResult<'value>>;
 }
 
 pub(crate) trait UnaryComparator {
-    fn compare<'value>(
-        &self,
-        lhs: &[QueryResult<'value>],
-    ) -> crate::rules::Result<EvalResult<'value>>;
+    fn compare<'value>(&self, lhs: &[QueryResult]) -> crate::rules::Result<EvalResult<'value>>;
 }
 
 struct CommonOperator {
@@ -129,51 +128,41 @@ struct CommonOperator {
 struct EqOperation {}
 struct InOperation {}
 
-fn selected<'query, 'value: 'query, U, R>(
-    query_results: &'query [QueryResult<'value>],
-    mut c: U,
-    mut r: R,
-) -> Vec<TraversedTo<'value>>
+fn selected<U, R>(query_results: &[QueryResult], mut c: U, mut r: R) -> Vec<Rc<PathAwareValue>>
 where
-    U: FnMut(&UnResolved<'value>),
-    R: FnMut(&mut Vec<TraversedTo<'value>>, TraversedTo<'value>),
+    U: FnMut(&UnResolved),
+    R: FnMut(&mut Vec<Rc<PathAwareValue>>, Rc<PathAwareValue>),
 {
     let mut aggregated = Vec::with_capacity(query_results.len());
     for each in query_results {
         match each {
-            QueryResult::Literal(l) => r(&mut aggregated, rules::TraversedTo::Referenced(l)),
-            QueryResult::Resolved(l) => r(&mut aggregated, l.clone()),
+            QueryResult::Literal(l) => r(&mut aggregated, Rc::clone(l)),
+            QueryResult::Resolved(l) => r(&mut aggregated, Rc::clone(l)),
             QueryResult::UnResolved(ur) => c(ur),
         }
     }
     aggregated
 }
 
-fn flattened<'query, 'value, U>(
-    query_results: &'query [QueryResult<'value>],
-    c: U,
-) -> Vec<TraversedTo<'value>>
+fn flattened<U>(query_results: &[QueryResult], c: U) -> Vec<Rc<PathAwareValue>>
 where
-    U: FnMut(&UnResolved<'value>),
+    U: FnMut(&UnResolved),
 {
-    selected(query_results, c, |into, p| match p.borrow_inner2() {
+    // TODO: this can probably be improved with less clones..
+    selected(query_results, c, |into, p| match &*p {
         PathAwareValue::List((_, list)) => {
-            into.extend(
-                list.iter()
-                    .map(|each| TraversedTo::Owned(each.clone()))
-                    .collect::<Vec<_>>(),
-            );
+            into.extend(list.iter().cloned().map(Rc::new).collect::<Vec<_>>());
         }
 
-        rest => into.push(TraversedTo::Owned(rest.clone())),
+        rest => into.push(Rc::new(rest.clone())),
     })
 }
 
 impl Comparator for CommonOperator {
     fn compare<'value>(
         &self,
-        lhs: &[QueryResult<'value>],
-        rhs: &[QueryResult<'value>],
+        lhs: &[QueryResult],
+        rhs: &[QueryResult],
     ) -> crate::rules::Result<EvalResult<'value>> {
         let mut results = Vec::with_capacity(lhs.len());
         let lhs_flattened = flattened(lhs, |ur| {
@@ -202,14 +191,14 @@ impl Comparator for CommonOperator {
 }
 
 fn match_value<'value, C>(
-    each_lhs: TraversedTo<'value>,
-    each_rhs: TraversedTo<'value>,
+    each_lhs: Rc<PathAwareValue>,
+    each_rhs: Rc<PathAwareValue>,
     comparator: C,
 ) -> ValueEvalResult<'value>
 where
     C: Fn(&PathAwareValue, &PathAwareValue) -> crate::rules::Result<bool>,
 {
-    match comparator(each_lhs.borrow_inner2(), each_rhs.borrow_inner2()) {
+    match comparator(&each_lhs, &each_rhs) {
         Ok(cmp) => {
             if cmp {
                 success(each_lhs, each_rhs)
@@ -232,20 +221,20 @@ where
     }
 }
 
-fn is_literal<'value>(query_results: &[QueryResult<'value>]) -> Option<&'value PathAwareValue> {
+fn is_literal(query_results: &[QueryResult]) -> Option<Rc<PathAwareValue>> {
     if query_results.len() == 1 {
-        if let QueryResult::Literal(p) = query_results[0] {
-            return Some(p);
+        if let QueryResult::Literal(p) = &query_results[0] {
+            return Some(Rc::clone(p));
         }
     }
     None
 }
 
 fn string_in<'value>(
-    lhs_value: TraversedTo<'value>,
-    rhs_value: TraversedTo<'value>,
+    lhs_value: Rc<PathAwareValue>,
+    rhs_value: Rc<PathAwareValue>,
 ) -> ValueEvalResult<'value> {
-    match (lhs_value.borrow_inner2(), rhs_value.borrow_inner2()) {
+    match (&*lhs_value, &*rhs_value) {
         (PathAwareValue::String((_, lhs)), PathAwareValue::String((_, rhs))) => {
             if rhs.contains(lhs) {
                 success(lhs_value, rhs_value)
@@ -259,8 +248,8 @@ fn string_in<'value>(
 }
 
 fn not_comparable<'value>(
-    lhs: TraversedTo<'value>,
-    rhs: TraversedTo<'value>,
+    lhs: Rc<PathAwareValue>,
+    rhs: Rc<PathAwareValue>,
 ) -> ValueEvalResult<'value> {
     ValueEvalResult::ComparisonResult(ComparisonResult::NotComparable(NotComparable {
         pair: LhsRhsPair {
@@ -271,14 +260,14 @@ fn not_comparable<'value>(
     }))
 }
 
-fn success<'value>(lhs: TraversedTo<'value>, rhs: TraversedTo<'value>) -> ValueEvalResult<'value> {
+fn success<'value>(lhs: Rc<PathAwareValue>, rhs: Rc<PathAwareValue>) -> ValueEvalResult<'value> {
     ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(LhsRhsPair {
         lhs,
         rhs,
     })))
 }
 
-fn fail<'value>(lhs: TraversedTo<'value>, rhs: TraversedTo<'value>) -> ValueEvalResult<'value> {
+fn fail<'value>(lhs: Rc<PathAwareValue>, rhs: Rc<PathAwareValue>) -> ValueEvalResult<'value> {
     ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(LhsRhsPair {
         lhs,
         rhs,
@@ -286,23 +275,23 @@ fn fail<'value>(lhs: TraversedTo<'value>, rhs: TraversedTo<'value>) -> ValueEval
 }
 
 fn contained_in<'value>(
-    lhs_value: TraversedTo<'value>,
-    rhs_value: TraversedTo<'value>,
+    lhs_value: Rc<PathAwareValue>,
+    rhs_value: Rc<PathAwareValue>,
 ) -> ValueEvalResult<'value> {
-    match lhs_value.borrow_inner2() {
-        PathAwareValue::List((_, lhsl)) => match rhs_value.borrow_inner2() {
+    match &*lhs_value {
+        PathAwareValue::List((_, lhsl)) => match &*rhs_value {
             PathAwareValue::List((_, rhsl)) => {
                 if !rhsl.is_empty() && rhsl[0].is_list() {
-                    if rhsl.contains(lhs_value.borrow_inner2()) {
+                    if rhsl.contains(&*lhs_value) {
                         ValueEvalResult::ComparisonResult(ComparisonResult::Success(
                             Compare::ListIn(ListIn::new(vec![], lhs_value, rhs_value)),
                         ))
                     } else {
                         ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::ListIn(
                             ListIn::new(
-                                vec![lhs_value.clone()],
-                                lhs_value.clone(),
-                                rhs_value.clone(),
+                                vec![Rc::clone(&lhs_value)],
+                                Rc::clone(&lhs_value),
+                                Rc::clone(&rhs_value),
                             ),
                         )))
                     }
@@ -310,7 +299,8 @@ fn contained_in<'value>(
                     let diff = lhsl
                         .iter()
                         .filter(|each| !rhsl.contains(each))
-                        .map(|each| TraversedTo::Owned(each.clone()))
+                        .cloned()
+                        .map(Rc::new)
                         .collect::<Vec<_>>();
 
                     if diff.is_empty() {
@@ -336,24 +326,20 @@ fn contained_in<'value>(
             }
         },
 
-        rest => match rhs_value.borrow_inner2() {
+        rest => match &*rhs_value {
             PathAwareValue::List((_, rhsl)) => {
                 if rhsl.contains(rest) {
                     ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(
-                        LhsRhsPair::new(rules::TraversedTo::Owned(rest.clone()), rhs_value),
+                        LhsRhsPair::new(Rc::new(rest.clone()), Rc::clone(&rhs_value)),
                     )))
                 } else {
                     ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::ValueIn(
-                        LhsRhsPair::new(rules::TraversedTo::Owned(rest.clone()), rhs_value),
+                        LhsRhsPair::new(Rc::new(rest.clone()), Rc::clone(&rhs_value)),
                     )))
                 }
             }
 
-            rhs_rest => match_value(
-                rules::TraversedTo::Owned(rest.clone()),
-                rules::TraversedTo::Owned(rhs_rest.clone()),
-                compare_eq,
-            ),
+            rhs_rest => match_value(Rc::new(rest.clone()), Rc::new(rhs_rest.clone()), compare_eq),
         },
     }
 }
@@ -361,48 +347,38 @@ fn contained_in<'value>(
 impl Comparator for InOperation {
     fn compare<'value>(
         &self,
-        lhs: &[QueryResult<'value>],
-        rhs: &[QueryResult<'value>],
+        lhs: &[QueryResult],
+        rhs: &[QueryResult],
     ) -> crate::rules::Result<EvalResult<'value>> {
         let mut results = Vec::with_capacity(lhs.len());
         match (is_literal(lhs), is_literal(rhs)) {
-            (Some(l), Some(r)) => {
+            (Some(ref l), Some(ref r)) => {
                 results.push(
-                    string_in(
-                        rules::TraversedTo::Referenced(l),
-                        rules::TraversedTo::Referenced(r),
-                    )
-                    .fail(|_| {
-                        contained_in(
-                            rules::TraversedTo::Referenced(l),
-                            rules::TraversedTo::Referenced(r),
-                        )
-                    }),
+                    string_in(Rc::clone(l), Rc::clone(r))
+                        .fail(|_| contained_in(Rc::clone(l), Rc::clone(r))),
                 );
             }
 
-            (Some(l), None) => {
+            (Some(ref l), None) => {
                 let rhs = selected(
                     rhs,
                     |ur| {
                         results.push(ValueEvalResult::ComparisonResult(
-                            ComparisonResult::RhsUnresolved(
-                                ur.clone(),
-                                rules::TraversedTo::Referenced(l),
-                            ),
+                            ComparisonResult::RhsUnresolved(ur.clone(), Rc::clone(l)),
                         ))
                     },
                     Vec::push,
                 );
 
                 if rhs.iter().any(|elem| elem.is_list()) {
-                    rhs.into_iter().for_each(|r| {
-                        results.push(contained_in(rules::TraversedTo::Referenced(l), r))
-                    });
-                } else if let PathAwareValue::List((_, list)) = l {
+                    rhs.into_iter()
+                        .for_each(|r| results.push(contained_in(Rc::clone(l), r)));
+                } else if let PathAwareValue::List((_, list)) = &**l {
+                    // TODO: will this work? how are Rc<T> checked for equivalency
                     let diff = list
                         .iter()
-                        .map(TraversedTo::Referenced)
+                        .cloned()
+                        .map(Rc::new)
                         .filter(|elem| !rhs.contains(elem))
                         .collect::<Vec<_>>();
 
@@ -411,7 +387,7 @@ impl Comparator for InOperation {
                             ComparisonResult::Success(Compare::QueryIn(QueryIn {
                                 diff,
                                 rhs,
-                                lhs: vec![rules::TraversedTo::Referenced(l)],
+                                lhs: vec![Rc::clone(l)],
                             })),
                         ));
                     } else {
@@ -419,16 +395,13 @@ impl Comparator for InOperation {
                             Compare::QueryIn(QueryIn {
                                 diff,
                                 rhs,
-                                lhs: vec![rules::TraversedTo::Referenced(l)],
+                                lhs: vec![Rc::clone(l)],
                             }),
                         )));
                     }
                 } else {
                     rhs.iter().for_each(|rhs_elem| {
-                        results.push(contained_in(
-                            rules::TraversedTo::Referenced(l),
-                            rhs_elem.clone(),
-                        ))
+                        results.push(contained_in(Rc::clone(l), rhs_elem.clone()))
                     });
                 }
             }
@@ -440,24 +413,18 @@ impl Comparator for InOperation {
                     Vec::push,
                 )
                 .into_iter()
-                .for_each(|l| match r {
-                    PathAwareValue::String(_) => match l.borrow_inner() {
+                .for_each(|l| match &*r {
+                    PathAwareValue::String(_) => match &*l {
                         PathAwareValue::List((_, lhsl)) => {
                             for eachl in lhsl {
-                                results.push(string_in(
-                                    rules::TraversedTo::Referenced(eachl),
-                                    rules::TraversedTo::Referenced(r),
-                                ));
+                                results.push(string_in(Rc::new(eachl.clone()), Rc::clone(&r)));
                             }
                         }
 
-                        rest => results.push(string_in(
-                            rules::TraversedTo::Referenced(rest),
-                            rules::TraversedTo::Referenced(r),
-                        )),
+                        rest => results.push(string_in(Rc::new(rest.clone()), Rc::clone(&r))),
                     },
 
-                    rest => results.push(contained_in(l, rules::TraversedTo::Referenced(rest))),
+                    rest => results.push(contained_in(l, Rc::new(rest.clone()))),
                 });
             }
 
@@ -510,17 +477,13 @@ impl Comparator for InOperation {
 impl Comparator for EqOperation {
     fn compare<'value>(
         &self,
-        lhs: &[QueryResult<'value>],
-        rhs: &[QueryResult<'value>],
+        lhs: &[QueryResult],
+        rhs: &[QueryResult],
     ) -> crate::rules::Result<EvalResult<'value>> {
         let mut results = Vec::with_capacity(lhs.len());
         match (is_literal(lhs), is_literal(rhs)) {
-            (Some(l), Some(r)) => {
-                results.push(match_value(
-                    rules::TraversedTo::Referenced(l),
-                    rules::TraversedTo::Referenced(r),
-                    compare_eq,
-                ));
+            (Some(ref l), Some(ref r)) => {
+                results.push(match_value(Rc::clone(l), Rc::clone(r), compare_eq));
             }
 
             (Some(l), None) => {
@@ -528,34 +491,27 @@ impl Comparator for EqOperation {
                     rhs,
                     |ur| {
                         results.push(ValueEvalResult::ComparisonResult(
-                            ComparisonResult::RhsUnresolved(
-                                ur.clone(),
-                                rules::TraversedTo::Referenced(l),
-                            ),
+                            ComparisonResult::RhsUnresolved(ur.clone(), Rc::clone(&l)),
                         ))
                     },
                     Vec::push,
                 );
 
-                match l {
+                match &*l {
                     PathAwareValue::List(_) => {
                         for each in rhs {
-                            results.push(match_value(
-                                rules::TraversedTo::Referenced(l),
-                                each,
-                                compare_eq,
-                            ));
+                            results.push(match_value(Rc::clone(&l), each, compare_eq));
                         }
                     }
 
                     single_value => {
                         for eachr in rhs {
-                            match eachr.borrow_inner2() {
+                            match &*eachr {
                                 PathAwareValue::List((_, rhsl)) => {
                                     for each_rhs in rhsl {
                                         results.push(match_value(
-                                            rules::TraversedTo::Owned(single_value.clone()),
-                                            rules::TraversedTo::Owned(each_rhs.clone()),
+                                            Rc::new(single_value.clone()),
+                                            Rc::new(each_rhs.clone()),
                                             compare_eq,
                                         ));
                                     }
@@ -563,8 +519,8 @@ impl Comparator for EqOperation {
 
                                 rest_rhs => {
                                     results.push(match_value(
-                                        rules::TraversedTo::Owned(single_value.clone()),
-                                        rules::TraversedTo::Owned(rest_rhs.clone()),
+                                        Rc::new(single_value.clone()),
+                                        Rc::new(rest_rhs.clone()),
                                         compare_eq,
                                     ));
                                 }
@@ -580,39 +536,35 @@ impl Comparator for EqOperation {
                     |ur| results.push(ValueEvalResult::LhsUnresolved(ur.clone())),
                     Vec::push,
                 );
-                match r {
+                match &*r {
                     PathAwareValue::List((_, rhsl)) => {
                         for each in lhs_flattened {
                             if each.is_scalar() && rhsl.len() == 1 {
                                 results.push(match_value(
                                     each,
-                                    rules::TraversedTo::Referenced(&rhsl[0]),
+                                    Rc::new(rhsl[0].clone()),
                                     compare_eq,
                                 ))
                             } else {
-                                results.push(match_value(
-                                    each,
-                                    rules::TraversedTo::Referenced(r),
-                                    compare_eq,
-                                ));
+                                results.push(match_value(each, Rc::clone(&r), compare_eq));
                             }
                         }
                     }
 
                     single_value => {
                         for each in lhs_flattened {
-                            if let PathAwareValue::List((_, lhs_list)) = each.borrow_inner2() {
+                            if let PathAwareValue::List((_, lhs_list)) = &*each {
                                 for each_lhs in lhs_list {
                                     results.push(match_value(
-                                        rules::TraversedTo::Owned(each_lhs.clone()),
-                                        rules::TraversedTo::Owned(single_value.clone()),
+                                        Rc::new(each_lhs.clone()),
+                                        Rc::new(single_value.clone()),
                                         compare_eq,
                                     ));
                                 }
                             } else {
                                 results.push(match_value(
                                     each.clone(),
-                                    rules::TraversedTo::Owned(r.clone()),
+                                    Rc::clone(&r.clone()),
                                     compare_eq,
                                 ));
                             }
@@ -672,8 +624,8 @@ impl Comparator for EqOperation {
 impl Comparator for CmpOperator {
     fn compare<'value>(
         &self,
-        lhs: &[QueryResult<'value>],
-        rhs: &[QueryResult<'value>],
+        lhs: &[QueryResult],
+        rhs: &[QueryResult],
     ) -> crate::rules::Result<EvalResult<'value>> {
         if lhs.is_empty() || rhs.is_empty() {
             return Ok(EvalResult::Skip);
@@ -709,8 +661,8 @@ impl Comparator for CmpOperator {
 impl Comparator for (CmpOperator, bool) {
     fn compare<'value>(
         &self,
-        lhs: &[QueryResult<'value>],
-        rhs: &[QueryResult<'value>],
+        lhs: &[QueryResult],
+        rhs: &[QueryResult],
     ) -> crate::rules::Result<EvalResult<'value>> {
         let results = self.0.compare(lhs, rhs)?;
         Ok(match results {
@@ -754,13 +706,13 @@ impl Comparator for (CmpOperator, bool) {
                                         }
 
                                         Compare::ListIn(lin) => {
-                                            let lhs = match lin.lhs.borrow_inner2() {
+                                            let lhs = match &*lin.lhs {
                                                 PathAwareValue::List((_, v)) => v,
                                                 _ => unreachable!(),
                                             };
                                             let mut reverse_diff = Vec::with_capacity(lhs.len());
                                             for each in lhs {
-                                                let each = TraversedTo::Owned(each.clone());
+                                                let each = Rc::new(each.clone());
                                                 if !lin.diff.contains(&each) {
                                                     reverse_diff.push(each)
                                                 }
@@ -807,20 +759,20 @@ impl Comparator for (CmpOperator, bool) {
                                         }
 
                                         Compare::ListIn(lin) => {
-                                            let lhs = match lin.lhs.borrow_inner2() {
+                                            let lhs = match &*lin.lhs {
                                                 PathAwareValue::List((_, v)) => v,
                                                 _ => unreachable!(),
                                             };
                                             let mut reverse_diff = Vec::with_capacity(lhs.len());
                                             for each in lhs {
-                                                reverse_diff.push(TraversedTo::Owned(each.clone()));
+                                                reverse_diff.push(Rc::new(each.clone()));
                                             }
                                             ValueEvalResult::ComparisonResult(
                                                 ComparisonResult::Fail(Compare::ListIn(
                                                     ListIn::new(
                                                         reverse_diff,
-                                                        lin.lhs.clone(),
-                                                        lin.rhs.clone(),
+                                                        Rc::clone(&lin.lhs),
+                                                        Rc::clone(&lin.rhs),
                                                     ),
                                                 )),
                                             )

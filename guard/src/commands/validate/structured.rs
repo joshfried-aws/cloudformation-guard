@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::vec;
 
 use crate::commands::validate::{parse_rules, DataFile, OutputFormatType, RuleFileInfo};
@@ -58,7 +59,7 @@ impl<'eval> StructuredEvaluator<'eval> {
         let mut records = vec![];
         for rule in &rules {
             for each in &merged_data {
-                let mut root_scope = root_scope(rule, each)?;
+                let mut root_scope = root_scope(rule, Rc::new(each.clone()))?;
 
                 if let Status::FAIL = eval_rules_file(rule, &mut root_scope)? {
                     self.exit_code = 5;

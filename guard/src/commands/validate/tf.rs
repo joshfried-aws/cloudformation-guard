@@ -119,7 +119,7 @@ fn single_line(
     }
 
     let mut by_resources = HashMap::new();
-    for (key, value) in path_tree.range("/resource_changes/"..) {
+    for (key, value) in path_tree.range(String::from("/resource_changes/")..) {
         let resource_ptr = match RESOURCE_CHANGE_EXTRACTION.captures(key) {
             Ok(Some(cap)) => cap.name("index_or_name").unwrap().as_str(),
             Ok(None) => unreachable!(),
@@ -208,7 +208,7 @@ fn single_line(
                         &mut self,
                         writer: &mut dyn Write,
                         _cr: &ClauseReport<'_>,
-                        bc: &BinaryComparison<'_>,
+                        bc: &BinaryComparison,
                         prefix: &str,
                     ) -> crate::rules::Result<usize> {
                         let width = "PropertyPath".len() + 4;
@@ -246,7 +246,7 @@ fn single_line(
                         &mut self,
                         _writer: &mut dyn Write,
                         _cr: &ClauseReport<'_>,
-                        _bc: &InComparison<'_>,
+                        _bc: &InComparison,
                         _prefix: &str,
                     ) -> crate::rules::Result<usize> {
                         todo!()
@@ -256,7 +256,7 @@ fn single_line(
                         &mut self,
                         writer: &mut dyn Write,
                         _cr: &ClauseReport<'_>,
-                        re: &UnaryComparison<'_>,
+                        re: &UnaryComparison,
                         prefix: &str,
                     ) -> crate::rules::Result<usize> {
                         let _width = "PropertyPath".len() + 4;

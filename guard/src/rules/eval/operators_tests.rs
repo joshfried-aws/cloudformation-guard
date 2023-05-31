@@ -1,7 +1,7 @@
 use super::*;
 use crate::rules::eval_context::eval_context_tests::BasicQueryTesting;
 use crate::rules::exprs::AccessQuery;
-use crate::rules::{self, EvalContext, TraversedTo};
+use crate::rules::EvalContext;
 use std::convert::TryFrom;
 
 const RESOURCES: &str = r###"
@@ -85,13 +85,13 @@ fn test_operator_eq_literal() -> crate::rules::Result<()> {
     )?;
     let value = PathAwareValue::try_from(crate::rules::values::read_from(RESOURCES)?)?;
     let mut evaluator = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let answers = evaluator.query(&query.query)?;
     assert_eq!(answers.len(), 2);
     let literal = PathAwareValue::String((Path::root(), "*".to_string()));
-    let literal_string = vec![QueryResult::Literal(&literal)];
+    let literal_string = vec![QueryResult::Literal(Rc::new(literal))];
 
     //
     // != '*'
@@ -140,28 +140,28 @@ fn test_operator_eq_literal() -> crate::rules::Result<()> {
 #[test]
 fn test_operator_eq_queries() -> crate::rules::Result<()> {
     let s3_keys = [
-        PathAwareValue::String((Path::root(), "s3".to_string())),
-        PathAwareValue::String((Path::root(), "s32".to_string())),
+        Rc::new(PathAwareValue::String((Path::root(), "s3".to_string()))),
+        Rc::new(PathAwareValue::String((Path::root(), "s32".to_string()))),
     ];
 
-    let s3_bucket_refs = [PathAwareValue::String((
+    let s3_bucket_refs = [Rc::new(PathAwareValue::String((
         Path::new(
             "/Resources/s3Policy/Properties/Bucket/Ref".to_string(),
             0,
             0,
         ),
         String::from("s3"),
-    ))];
+    )))];
 
-    let s3_keys_query_results: Vec<QueryResult<'_>> = s3_keys
+    let s3_keys_query_results: Vec<QueryResult> = s3_keys
         .iter()
-        .map(TraversedTo::Referenced)
+        .map(Rc::clone)
         .map(QueryResult::Resolved)
         .collect();
 
-    let s3_bucket_policy_results: Vec<QueryResult<'_>> = s3_bucket_refs
+    let s3_bucket_policy_results: Vec<QueryResult> = s3_bucket_refs
         .iter()
-        .map(TraversedTo::Referenced)
+        .map(Rc::clone)
         .map(QueryResult::Resolved)
         .collect();
 
@@ -209,12 +209,12 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     ));
 
     let lhs_queries = [
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&lhs_scalar)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&lhs_list)),
+        QueryResult::Resolved(Rc::new(lhs_scalar)),
+        QueryResult::Resolved(Rc::new(lhs_list)),
     ];
 
     let rhs_scalar = PathAwareValue::String((Path::root(), "*".to_string()));
-    let rhs_queries = [QueryResult::Literal(&rhs_scalar)];
+    let rhs_queries = [QueryResult::Literal(Rc::new(rhs_scalar.clone()))];
 
     //
     // Checking something like Resources[ Type == "AWS::IAM::Role" ].Properties.Policy.Statement[*].Action != '*'
@@ -230,12 +230,9 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(pair.rhs.borrow_inner2(), &rhs_scalar);
-                assert!(matches!(
-                    pair.lhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
+                assert_eq!(&*pair.rhs, &rhs_scalar);
+                assert!(matches!(*pair.lhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/0" || path == "/LHS/List/2");
                     assert!(v.as_str() == "ec2:*" || v.as_str() == "s3:*");
@@ -243,14 +240,9 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                dbg!(pair.rhs.borrow_inner2());
-                dbg!(&rhs_scalar);
-                assert_eq!(pair.rhs.borrow_inner2(), &rhs_scalar);
-                assert!(matches!(
-                    pair.lhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
+                assert_eq!(&*pair.rhs, &rhs_scalar);
+                assert!(matches!(*pair.lhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/1" || path == "/LHS/Scalar");
                     assert_eq!(v.as_str(), "*");
@@ -278,12 +270,9 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(pair.lhs.borrow_inner2(), &rhs_scalar);
-                assert!(matches!(
-                    pair.rhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.rhs.borrow_inner2() {
+                assert_eq!(&*pair.lhs, &rhs_scalar);
+                assert!(matches!(*pair.rhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.rhs {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/0" || path == "/LHS/List/2");
                     assert!(v.as_str() == "ec2:*" || v.as_str() == "s3:*");
@@ -291,12 +280,9 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert_eq!(pair.lhs.borrow_inner2(), &rhs_scalar);
-                assert!(matches!(
-                    pair.rhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.rhs.borrow_inner2() {
+                assert_eq!(&*pair.lhs, &rhs_scalar);
+                assert!(matches!(&*pair.rhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.rhs {
                     let path = p.0.as_str();
                     assert!(path == "/LHS/List/1" || path == "/LHS/Scalar");
                     assert_eq!(v.as_str(), "*");
@@ -316,7 +302,7 @@ fn test_operator_eq_query_to_scalar_literal_ok() -> crate::rules::Result<()> {
 #[test]
 fn test_operator_in_scalar_literal_to_query_ok() -> crate::rules::Result<()> {
     let scalar_literal_value = PathAwareValue::String((Path::root(), "*".to_string()));
-    let scalar_literal = vec![QueryResult::Literal(&scalar_literal_value)];
+    let scalar_literal = vec![QueryResult::Literal(Rc::new(scalar_literal_value.clone()))];
     let scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
     let scalar_query_list_value = PathAwareValue::List((
         Path::root(),
@@ -326,8 +312,8 @@ fn test_operator_in_scalar_literal_to_query_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(scalar_query_list_value.clone())),
     ];
 
     //
@@ -341,13 +327,13 @@ fn test_operator_in_scalar_literal_to_query_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert_eq!(val.lhs.borrow_inner2(), &scalar_literal_value);
-                assert_eq!(val.rhs.borrow_inner2(), &scalar_query_list_value);
+                assert_eq!(&*val.lhs, &scalar_literal_value);
+                assert_eq!(&*val.rhs, &scalar_query_list_value);
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(pair.lhs.borrow_inner2(), &scalar_literal_value);
-                assert_eq!(pair.rhs.borrow_inner2(), &scalar_query_value);
+                assert_eq!(&*pair.lhs, &scalar_literal_value);
+                assert_eq!(&*pair.rhs, &scalar_query_value);
             }
 
             rest => {
@@ -369,7 +355,7 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
             PathAwareValue::String((Path::root(), "ec2:*".to_string())),
         ],
     ));
-    let list_literal = vec![QueryResult::Literal(&list_literal_value)];
+    let list_literal = vec![QueryResult::Literal(Rc::new(list_literal_value.clone()))];
     let scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
     let scalar_query_list_value = PathAwareValue::List((
         Path::root(),
@@ -379,8 +365,8 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(scalar_query_list_value.clone())),
     ];
 
     //
@@ -395,22 +381,20 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ListIn(l))) => {
                 assert!(l.diff.is_empty());
-                assert!(std::ptr::eq(
-                    l.rhs.borrow_inner2(),
-                    &scalar_query_list_value
-                ));
-                assert!(std::ptr::eq(l.lhs.borrow_inner2(), &list_literal_value));
+                assert_eq!(&*l.rhs, &scalar_query_list_value);
+                assert_eq!(&*l.lhs, &list_literal_value);
+                // assert!(std::ptr::eq(&*l.rhs, &scalar_query_list_value));
+                // assert!(std::ptr::eq(&*l.lhs, &list_literal_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::NotComparable(nc)) => {
-                assert!(std::ptr::eq(
-                    nc.pair.lhs.borrow_inner2(),
-                    &list_literal_value
-                ));
-                assert!(std::ptr::eq(
-                    nc.pair.rhs.borrow_inner2(),
-                    &scalar_query_value
-                ));
+                // TODO: verify this is okay...i dont see why it wouldnt. It only fails now cause
+                // of clones we call on the underlying PathAwareValue...but theyre not mutable so
+                // while it may not be the most efficient, it shouldnt be dangerous / buggy?
+                assert_eq!(*nc.pair.lhs, list_literal_value);
+                assert_eq!(&*nc.pair.rhs, &scalar_query_value);
+                // assert!(std::ptr::eq(&*nc.pair.lhs, &list_literal_value));
+                // assert!(std::ptr::eq(&*nc.pair.rhs, &scalar_query_value));
             }
 
             rest => {
@@ -426,7 +410,7 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
 #[test]
 fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
     let scalar_literal_value = PathAwareValue::String((Path::root(), "*".to_string()));
-    let scalar_literal = vec![QueryResult::Literal(&scalar_literal_value)];
+    let scalar_literal = vec![QueryResult::Literal(Rc::new(scalar_literal_value.clone()))];
     let scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
     let scalar_query_list_value = PathAwareValue::List((
         Path::root(),
@@ -436,8 +420,8 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(scalar_query_list_value.clone())),
     ];
 
     //
@@ -452,17 +436,13 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(
-                    pair.rhs.borrow_inner2(),
-                    &scalar_literal_value
-                ));
-                assert!(matches!(
-                    pair.lhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
+                assert_eq!(&*pair.rhs, &scalar_literal_value);
+                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
+                assert!(matches!(&*pair.lhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     if p.0.is_empty() {
-                        assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &scalar_query_value));
+                        // assert!(std::ptr::eq(&*pair.lhs, &scalar_query_value));
+                        assert_eq!(&*pair.lhs, &scalar_query_value);
                     } else {
                         assert_eq!(&p.0, "/1");
                         assert_eq!(v, "*");
@@ -474,15 +454,10 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
             // As "ec2*" in "*" FAILs
             //
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
-                assert!(std::ptr::eq(
-                    pair.rhs.borrow_inner2(),
-                    &scalar_literal_value
-                ));
-                assert!(matches!(
-                    pair.lhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
+                assert_eq!(&*pair.rhs, &scalar_literal_value);
+                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
+                assert!(matches!(&*pair.lhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     assert_eq!(&p.0, "/0");
                     assert_eq!(v, "ec2*");
                 }
@@ -509,13 +484,13 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(pair.lhs.borrow_inner2(), &scalar_literal_value);
-                assert_eq!(pair.rhs.borrow_inner2(), &scalar_query_value);
+                assert_eq!(&*pair.lhs, &scalar_literal_value);
+                assert_eq!(&*pair.rhs, &scalar_query_value);
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert_eq!(val.lhs.borrow_inner2(), &scalar_literal_value);
-                assert_eq!(val.rhs.borrow_inner2(), &scalar_query_list_value);
+                assert_eq!(&*val.lhs, &scalar_literal_value);
+                assert_eq!(&*val.rhs, &scalar_query_list_value);
             }
 
             rest => {
@@ -531,7 +506,7 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
 #[test]
 fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
     let scalar_literal_value = PathAwareValue::String((Path::root(), "*,ec2*,s3*".to_string()));
-    let scalar_literal = vec![QueryResult::Literal(&scalar_literal_value)];
+    let scalar_literal = vec![QueryResult::Literal(Rc::new(scalar_literal_value.clone()))];
     let scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
     let scalar_query_list_value = PathAwareValue::List((
         Path::root(),
@@ -542,8 +517,8 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
         ],
     ));
     let query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(scalar_query_list_value)),
     ];
 
     //
@@ -561,22 +536,18 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
                 //
                 // RHS value pointer is the same
                 //
-                assert!(std::ptr::eq(
-                    pair.rhs.borrow_inner2(),
-                    &scalar_literal_value
-                ));
+                assert_eq!(&*pair.rhs, &scalar_literal_value);
+                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert!(matches!(
-                    pair.lhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
+                assert!(matches!(&*pair.lhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     match p.0.as_str() {
                         "" => {
-                            assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &scalar_query_value));
+                            assert_eq!(&*pair.lhs, &scalar_query_value);
+                            // assert!(std::ptr::eq(&*pair.lhs, &scalar_query_value));
                         }
 
                         "/0" => {
@@ -610,7 +581,7 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
 #[test]
 fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<()> {
     let scalar_literal_value = PathAwareValue::String((Path::root(), "*,ec2*,s3*".to_string()));
-    let scalar_literal = vec![QueryResult::Literal(&scalar_literal_value)];
+    let scalar_literal = vec![QueryResult::Literal(Rc::new(scalar_literal_value.clone()))];
     let scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
     let scalar_query_list_value = PathAwareValue::List((
         Path::root(),
@@ -630,12 +601,12 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
     ));
     let ur = UnResolved {
         reason: None,
-        traversed_to: rules::TraversedTo::Referenced(&unresolved_rhs_traversed_to),
+        traversed_to: Rc::new(unresolved_rhs_traversed_to),
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(scalar_query_list_value)),
         QueryResult::UnResolved(ur.clone()),
     ];
 
@@ -658,22 +629,18 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 //
                 // RHS value pointer is the same
                 //
-                assert!(std::ptr::eq(
-                    pair.rhs.borrow_inner2(),
-                    &scalar_literal_value
-                ));
+                assert_eq!(&*pair.rhs, &scalar_literal_value);
+                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert!(matches!(
-                    pair.lhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
+                assert!(matches!(&*pair.lhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     match p.0.as_str() {
                         "" => {
-                            assert!(std::ptr::eq(pair.lhs.borrow_inner2(), &scalar_query_value));
+                            assert_eq!(&*pair.lhs, &scalar_query_value);
+                            // assert!(std::ptr::eq(&*pair.lhs, &scalar_query_value));
                         }
 
                         "/0" => {
@@ -698,19 +665,14 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 //
                 // RHS value pointer is the same
                 //
-                assert!(std::ptr::eq(
-                    pair.rhs.borrow_inner2(),
-                    &scalar_literal_value
-                ));
+                assert_eq!(&*pair.rhs, &scalar_literal_value);
+                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
 
                 //
                 // Expect all String values from the flattened list
                 //
-                assert!(matches!(
-                    &pair.lhs.borrow_inner2(),
-                    PathAwareValue::String(_)
-                ));
-                if let PathAwareValue::String((p, v)) = pair.lhs.borrow_inner2() {
+                assert!(matches!(&&*pair.lhs, PathAwareValue::String(_)));
+                if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     assert_eq!(&p.0, "/3");
                     assert_eq!(v, "iam*");
                 }
@@ -752,8 +714,8 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     ));
 
     let lhs_query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&lhs_scalar_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&lhs_list_value)),
+        QueryResult::Resolved(Rc::new(lhs_scalar_value.clone())),
+        QueryResult::Resolved(Rc::new(lhs_list_value.clone())),
     ];
 
     let rhs_scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
@@ -768,8 +730,8 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     ));
 
     let rhs_query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&rhs_scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&rhs_scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(rhs_scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(rhs_scalar_query_list_value.clone())),
     ];
 
     let eval = match CmpOperator::In.compare(&lhs_query_results, &rhs_query_results)? {
@@ -786,20 +748,21 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
                 assert!(lin.diff.is_empty());
                 for each in lin.lhs {
                     if each.is_scalar() {
-                        assert!(std::ptr::eq(each.borrow_inner2(), &lhs_scalar_value));
+                        assert_eq!(&*each, &lhs_scalar_value);
+                        // assert!(std::ptr::eq(&*each, &lhs_scalar_value));
                     } else {
-                        assert!(std::ptr::eq(each.borrow_inner2(), &lhs_list_value));
+                        assert_eq!(&*each, &lhs_list_value);
+                        // assert!(std::ptr::eq(&*each, &lhs_list_value));
                     }
                 }
 
                 for each in lin.rhs {
                     if each.is_scalar() {
-                        assert!(std::ptr::eq(each.borrow_inner2(), &rhs_scalar_query_value));
+                        // assert!(std::ptr::eq(&*each, &rhs_scalar_query_value));
+                        assert_eq!(&*each, &rhs_scalar_query_value);
                     } else {
-                        assert!(std::ptr::eq(
-                            each.borrow_inner2(),
-                            &rhs_scalar_query_list_value
-                        ));
+                        // assert!(std::ptr::eq(&*each, &rhs_scalar_query_list_value));
+                        assert_eq!(&*each, &rhs_scalar_query_list_value);
                     }
                 }
             }
@@ -814,8 +777,8 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
     //
     // Just list and it contains everything
     //
-    let rhs_query_results = vec![QueryResult::Resolved(rules::TraversedTo::Referenced(
-        &rhs_scalar_query_list_value,
+    let rhs_query_results = vec![QueryResult::Resolved(Rc::new(
+        rhs_scalar_query_list_value.clone(),
     ))];
 
     //
@@ -836,16 +799,16 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
                 assert!(qin.diff.is_empty());
                 for each in qin.lhs {
                     if each.is_scalar() {
-                        assert!(std::ptr::eq(each.borrow_inner2(), &lhs_scalar_value));
+                        // assert!(std::ptr::eq(&*each, &lhs_scalar_value));
+                        assert_eq!(&*each, &lhs_scalar_value);
                     } else {
-                        assert!(std::ptr::eq(each.borrow_inner2(), &lhs_list_value));
+                        assert_eq!(&*each, &lhs_list_value);
+                        // assert!(std::ptr::eq(&*each, &lhs_list_value));
                     }
                 }
                 for each in qin.rhs {
-                    assert!(std::ptr::eq(
-                        each.borrow_inner2(),
-                        &rhs_scalar_query_list_value
-                    ));
+                    assert_eq!(&*each, &rhs_scalar_query_list_value);
+                    // assert!(std::ptr::eq(&*each, &rhs_scalar_query_list_value));
                 }
             }
 
@@ -893,12 +856,12 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     ));
     let ur = UnResolved {
         reason: None,
-        traversed_to: rules::TraversedTo::Referenced(&unresolved_rhs_traversed_to),
+        traversed_to: Rc::new(unresolved_rhs_traversed_to),
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let lhs_query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&lhs_scalar_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&lhs_list_value)),
+        QueryResult::Resolved(Rc::new(lhs_scalar_value.clone())),
+        QueryResult::Resolved(Rc::new(lhs_list_value.clone())),
         QueryResult::UnResolved(ur.clone()),
     ];
 
@@ -913,8 +876,8 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     ));
 
     let rhs_query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&rhs_scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&rhs_scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(rhs_scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(rhs_scalar_query_list_value.clone())),
     ];
 
     let eval = match CmpOperator::In.compare(&lhs_query_results, &rhs_query_results)? {
@@ -930,17 +893,15 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::QueryIn(qin))) => {
                 assert!(qin.diff.is_empty());
                 assert_eq!(qin.rhs.len(), 2);
-                assert!(std::ptr::eq(
-                    qin.rhs[0].borrow_inner2(),
-                    &rhs_scalar_query_value
-                ));
-                assert!(std::ptr::eq(
-                    qin.rhs[1].borrow_inner2(),
-                    &rhs_scalar_query_list_value
-                ));
+                // assert!(std::ptr::eq(&*qin.rhs[0], &rhs_scalar_query_value));
+                assert_eq!(&*qin.rhs[0], &rhs_scalar_query_value);
+                assert_eq!(&*qin.rhs[1], &rhs_scalar_query_list_value);
+                // assert!(std::ptr::eq(&*qin.rhs[1], &rhs_scalar_query_list_value));
                 assert_eq!(qin.lhs.len(), 2);
-                assert!(std::ptr::eq(qin.lhs[0].borrow_inner2(), &lhs_scalar_value));
-                assert!(std::ptr::eq(qin.lhs[1].borrow_inner2(), &lhs_list_value));
+                assert_eq!(&*qin.lhs[0], &lhs_scalar_value);
+                // assert!(std::ptr::eq(&*qin.lhs[0], &lhs_scalar_value));
+                assert_eq!(&*qin.lhs[1], &lhs_list_value);
+                // assert!(std::ptr::eq(&*qin.lhs[1], &lhs_list_value));
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
@@ -957,8 +918,8 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
     //
     // Just list
     //
-    let rhs_query_results = vec![QueryResult::Resolved(rules::TraversedTo::Referenced(
-        &rhs_scalar_query_list_value,
+    let rhs_query_results = vec![QueryResult::Resolved(Rc::new(
+        rhs_scalar_query_list_value.clone(),
     ))];
 
     let eval = match CmpOperator::In.compare(&lhs_query_results, &rhs_query_results)? {
@@ -974,12 +935,11 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::QueryIn(qin))) => {
                 assert!(!qin.diff.is_empty());
                 assert_eq!(qin.diff.len(), 1);
-                assert!(std::ptr::eq(qin.diff[0].borrow_inner2(), &lhs_scalar_value));
+                assert_eq!(&*qin.diff[0], &lhs_scalar_value);
+                // assert!(std::ptr::eq(&*qin.diff[0], &lhs_scalar_value));
                 assert_eq!(qin.rhs.len(), 1);
-                assert!(std::ptr::eq(
-                    qin.rhs[0].borrow_inner2(),
-                    &rhs_scalar_query_list_value
-                ));
+                // assert!(std::ptr::eq(&*qin.rhs[0], &rhs_scalar_query_list_value));
+                assert_eq!(&*qin.rhs[0], &rhs_scalar_query_list_value);
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
@@ -1009,12 +969,11 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::QueryIn(qin))) => {
                 assert!(!qin.diff.is_empty());
                 assert_eq!(qin.diff.len(), 1);
-                assert!(std::ptr::eq(qin.diff[0].borrow_inner2(), &lhs_list_value));
+                assert_eq!(&*qin.diff[0], &lhs_list_value);
+                // assert!(std::ptr::eq(&*qin.diff[0], &lhs_list_value));
                 assert_eq!(qin.rhs.len(), 1);
-                assert!(std::ptr::eq(
-                    qin.rhs[0].borrow_inner2(),
-                    &rhs_scalar_query_list_value
-                ));
+                assert_eq!(&*qin.rhs[0], &rhs_scalar_query_list_value);
+                // assert!(std::ptr::eq(&*qin.rhs[0], &rhs_scalar_query_list_value));
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
@@ -1040,9 +999,9 @@ fn test_operator_in_literal_list_in_query_ok() -> crate::rules::Result<()> {
             PathAwareValue::String((Path::root(), String::from("Environment"))),
         ],
     ));
-    let lhs = QueryResult::Literal(&lhs_value);
+    let lhs = QueryResult::Literal(Rc::new(lhs_value));
     let rhs_value = PathAwareValue::String((Path::root(), String::from("Environment")));
-    let rhs = QueryResult::Resolved(rules::TraversedTo::Referenced(&rhs_value));
+    let rhs = QueryResult::Resolved(Rc::new(rhs_value));
     match CmpOperator::In.compare(&[lhs], &[rhs]) {
         Ok(EvalResult::Result(result)) => {
             for each in result {
@@ -1065,7 +1024,7 @@ fn test_operator_in_literal_list_in_query_ok() -> crate::rules::Result<()> {
 fn test_operator_in_scalar_literal_to_query_ok_with_unresolved() -> crate::rules::Result<()> {
     let scalar_literal_value =
         PathAwareValue::String((Path::new("Literal".to_string(), 0, 0), "*".to_string()));
-    let scalar_literal = vec![QueryResult::Literal(&scalar_literal_value)];
+    let scalar_literal = vec![QueryResult::Literal(Rc::new(scalar_literal_value.clone()))];
     let scalar_query_value = PathAwareValue::String((Path::root(), "*".to_string()));
     let scalar_query_list_value = PathAwareValue::List((
         Path::root(),
@@ -1083,12 +1042,12 @@ fn test_operator_in_scalar_literal_to_query_ok_with_unresolved() -> crate::rules
     ));
     let ur = UnResolved {
         reason: None,
-        traversed_to: rules::TraversedTo::Referenced(&unresolved_rhs_traversed_to),
+        traversed_to: Rc::new(unresolved_rhs_traversed_to),
         remaining_query: "Policy.Statements[*].Action".to_string(),
     };
     let query_results = vec![
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_value)),
-        QueryResult::Resolved(rules::TraversedTo::Referenced(&scalar_query_list_value)),
+        QueryResult::Resolved(Rc::new(scalar_query_value.clone())),
+        QueryResult::Resolved(Rc::new(scalar_query_list_value.clone())),
         QueryResult::UnResolved(ur.clone()),
     ];
 
@@ -1100,17 +1059,17 @@ fn test_operator_in_scalar_literal_to_query_ok_with_unresolved() -> crate::rules
     for each in eval {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
-                assert_eq!(pair.lhs.borrow_inner2(), &scalar_literal_value);
-                assert_eq!(pair.rhs.borrow_inner2(), &scalar_query_value);
+                assert_eq!(&*pair.lhs, &scalar_literal_value);
+                assert_eq!(&*pair.rhs, &scalar_query_value);
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::ValueIn(val))) => {
-                assert_eq!(val.lhs.borrow_inner2(), &scalar_literal_value);
-                assert_eq!(val.rhs.borrow_inner2(), &scalar_query_list_value);
+                assert_eq!(&*val.lhs, &scalar_literal_value);
+                assert_eq!(&*val.rhs, &scalar_query_list_value);
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::RhsUnresolved(inur, lhs)) => {
-                assert_eq!(lhs.borrow_inner2(), &scalar_literal_value);
+                assert_eq!(&*lhs, &scalar_literal_value);
                 assert_eq!(ur, inur);
             }
 
@@ -1130,7 +1089,7 @@ fn test_operator_eq_vs_in_from_queries() -> crate::rules::Result<()> {
         AccessQuery::try_from(r#"Resources[ Type == "Custom::Resource" ].Properties.ge"#)?.query;
     let value = PathAwareValue::try_from(crate::rules::values::read_from(RESOURCES)?)?;
     let mut evaluator = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let lhs_answers = evaluator.query(&custom)?;

@@ -117,7 +117,7 @@ impl<'reporter> Reporter for CfnAware<'reporter> {
 fn unary_err_msg(
     writer: &mut dyn Write,
     _clause: &ClauseReport<'_>,
-    re: &UnaryComparison<'_>,
+    re: &UnaryComparison,
     prefix: &str,
 ) -> rules::Result<usize> {
     let width = "PropertyPath".len() + 4;
@@ -157,7 +157,7 @@ fn single_line(
 
     let root = data.root().unwrap();
     let mut by_resources = HashMap::new();
-    for (key, value) in path_tree.range("/Resources"..) {
+    for (key, value) in path_tree.range(String::from("/Resources")..) {
         let matches = key.matches('/').count();
         let mut count = 1;
 
@@ -248,7 +248,7 @@ fn single_line(
                         &mut self,
                         writer: &mut dyn Write,
                         _cr: &ClauseReport<'_>,
-                        bc: Option<&UnResolved<'_>>,
+                        bc: Option<&UnResolved>,
                         prefix: &str,
                     ) -> rules::Result<usize> {
                         if let Some(bc) = bc {
@@ -261,7 +261,7 @@ fn single_line(
                         &mut self,
                         writer: &mut dyn Write,
                         _cr: &ClauseReport<'_>,
-                        bc: &BinaryComparison<'_>,
+                        bc: &BinaryComparison,
                         prefix: &str,
                     ) -> rules::Result<usize> {
                         let width = "PropertyPath".len() + 4;
@@ -287,7 +287,7 @@ fn single_line(
                         &mut self,
                         writer: &mut dyn Write,
                         _cr: &ClauseReport<'_>,
-                        bc: &InComparison<'_>,
+                        bc: &InComparison,
                         prefix: &str,
                     ) -> rules::Result<usize> {
                         let cut_off = max(bc.to.len(), 5);
@@ -341,7 +341,7 @@ fn single_line(
                         &mut self,
                         writer: &mut dyn Write,
                         cr: &ClauseReport<'_>,
-                        re: &UnaryComparison<'_>,
+                        re: &UnaryComparison,
                         prefix: &str,
                     ) -> rules::Result<usize> {
                         let width = unary_err_msg(writer, cr, re, prefix)?;
@@ -409,7 +409,7 @@ fn single_line(
 ///
 /// returns: String
 /// ```
-fn get_resource_name(key: &&str, count: usize, matches: usize) -> String {
+fn get_resource_name(key: &str, count: usize, matches: usize) -> String {
     let c = &char::from_u32(0xC).unwrap().to_string();
     // count = 2; key = "/Resources/foo/bar/baz -> placeholder = "\fResources\ffoo\fbar/baz"
     let mut placeholder = str::replacen(key, "/", c, matches - count);

@@ -2,8 +2,9 @@ use crate::rules::eval_context::EventRecord;
 use crate::rules::exprs::SliceDisplay;
 use crate::rules::path_value::PathAwareValue;
 use crate::rules::values::{CmpOperator, RangeType, LOWER_INCLUSIVE, UPPER_INCLUSIVE};
-use crate::rules::{self, BlockCheck, ClauseCheck, QueryResult, RecordType, Status, TraversedTo};
+use crate::rules::{BlockCheck, ClauseCheck, QueryResult, RecordType, Status};
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
 
 pub(crate) fn display_comparison((cmp, not): (CmpOperator, bool)) -> String {
     format!("{} {}", if not { "not" } else { "" }, cmp)
@@ -29,18 +30,18 @@ fn write_range<T: Display + PartialOrd>(
     Ok(())
 }
 
-pub(crate) struct ValueOnlyDisplay<'value>(pub(crate) TraversedTo<'value>);
+pub(crate) struct ValueOnlyDisplay(pub(crate) Rc<PathAwareValue>);
 
-impl<'value> std::fmt::Debug for ValueOnlyDisplay<'value> {
+impl std::fmt::Debug for ValueOnlyDisplay {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let as_display = self as &dyn Display;
         as_display.fmt(f)
     }
 }
 
-impl<'value> Display for ValueOnlyDisplay<'value> {
+impl Display for ValueOnlyDisplay {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self.0.borrow_inner2() {
+        match &*self.0 {
             PathAwareValue::Null(_path) => formatter.write_str("\"NULL\"")?,
             PathAwareValue::String((_path, value)) => {
                 formatter.write_fmt(format_args!("\"{}\"", value))?
@@ -65,7 +66,7 @@ impl<'value> Display for ValueOnlyDisplay<'value> {
                 if !list.is_empty() {
                     let last = list.len() - 1;
                     for (idx, each) in list.iter().enumerate() {
-                        ValueOnlyDisplay(rules::TraversedTo::Referenced(each)).fmt(formatter)?;
+                        ValueOnlyDisplay(Rc::new(each.clone())).fmt(formatter)?;
                         if last != idx {
                             formatter.write_str(",")?;
                         }
@@ -81,7 +82,7 @@ impl<'value> Display for ValueOnlyDisplay<'value> {
                     for (idx, (key, value)) in map.values.iter().enumerate() {
                         formatter.write_fmt(format_args!("\"{}\"", key))?;
                         formatter.write_str(":")?;
-                        ValueOnlyDisplay(rules::TraversedTo::Referenced(value)).fmt(formatter)?;
+                        ValueOnlyDisplay(Rc::new(value.clone())).fmt(formatter)?;
                         if last != idx {
                             formatter.write_str(",")?;
                         }
@@ -101,11 +102,11 @@ impl<'value> Display for ValueOnlyDisplay<'value> {
 impl Display for PathAwareValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("Path={} Value=", self.self_path()))?;
-        ValueOnlyDisplay(rules::TraversedTo::Referenced(self)).fmt(f)
+        ValueOnlyDisplay(Rc::new(self.clone())).fmt(f)
     }
 }
 
-impl<'value> Display for QueryResult<'value> {
+impl Display for QueryResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             QueryResult::Literal(l) => {
@@ -150,7 +151,7 @@ impl<'value> Display for ClauseCheck<'value> {
                     missing
                         .from
                         .unresolved_traversed_to()
-                        .map_or(String::from(""), |p| p.path_as_string())
+                        .map_or(String::from(""), |p| (*p).self_path().0.to_string())
                 ))?;
             }
 

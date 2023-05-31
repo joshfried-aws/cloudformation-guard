@@ -20,7 +20,7 @@ fn extraction_test() -> Result<()> {
 
     let rules = RulesFile::try_from(rules_files)?;
     let path_value = PathAwareValue::try_from("{}")?;
-    let root_scope = root_scope(&rules, &path_value)?;
+    let root_scope = root_scope(&rules, Rc::new(path_value))?;
     assert_eq!(rules.guard_rules.len(), 1);
     assert_eq!(root_scope.rules.len(), 1);
     assert_eq!(
@@ -39,35 +39,32 @@ fn extraction_test() -> Result<()> {
 // Query Testing without Filtering
 //
 pub(crate) struct BasicQueryTesting<'record, 'value> {
-    pub(crate) root: &'value PathAwareValue,
+    pub(crate) root: Rc<PathAwareValue>,
     pub(crate) recorder: Option<&'record mut dyn RecordTracer<'value>>,
 }
 
 impl<'record, 'value, 'loc: 'value> EvalContext<'value, 'loc>
     for BasicQueryTesting<'record, 'value>
 {
-    fn query(&mut self, query: &'value [QueryPart<'_>]) -> Result<Vec<QueryResult<'value>>> {
-        query_retrieval(0, query, self.root, self)
+    fn query(&mut self, query: &'value [QueryPart<'_>]) -> Result<Vec<QueryResult>> {
+        query_retrieval(0, query, self.root(), self)
     }
 
     fn find_parameterized_rule(&mut self, _: &str) -> Result<&'value ParameterizedRule<'loc>> {
         todo!()
     }
 
-    fn root(&mut self) -> &'value PathAwareValue {
-        self.root
+    fn root(&mut self) -> Rc<PathAwareValue> {
+        Rc::clone(&self.root)
     }
+
     fn rule_status(&mut self, _: &str) -> Result<Status> {
         todo!()
     }
-    fn resolve_variable(&mut self, _: &str) -> Result<Vec<QueryResult<'value>>> {
+    fn resolve_variable(&mut self, _: &str) -> Result<Vec<QueryResult>> {
         todo!()
     }
-    fn add_variable_capture_key(
-        &mut self,
-        _: &'value str,
-        _: &'value PathAwareValue,
-    ) -> Result<()> {
+    fn add_variable_capture_key(&mut self, _: &'value str, _: &PathAwareValue) -> Result<()> {
         todo!()
     }
 }
@@ -89,7 +86,7 @@ impl<'record, 'value, 'loc: 'value> RecordTracer<'value> for BasicQueryTesting<'
 fn no_query_return_root() -> Result<()> {
     let path_value = PathAwareValue::try_from("{}")?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value.clone()),
         recorder: None,
     };
     let query_results = eval.query(&[])?;
@@ -99,7 +96,8 @@ fn no_query_return_root() -> Result<()> {
         QueryResult::Resolved(r) => r,
         _ => unreachable!(),
     };
-    assert!(std::ptr::eq(&path_value, path_ref.borrow_inner2()));
+    assert_eq!(&path_value, &*path_ref);
+    // assert!(std::ptr::eq(&path_value, &*path_ref));
     Ok(())
 }
 
@@ -107,7 +105,7 @@ fn no_query_return_root() -> Result<()> {
 fn empty_value_return_unresolved() -> Result<()> {
     let path_value = PathAwareValue::try_from("{}")?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value.clone()),
         recorder: None,
     };
     let query = AccessQuery::try_from("Resources.*")?.query;
@@ -115,13 +113,11 @@ fn empty_value_return_unresolved() -> Result<()> {
     assert!(!query_results.is_empty());
     assert_eq!(query_results.len(), 1);
     let path_ref = match &query_results[0] {
-        QueryResult::UnResolved(ur) => match ur.traversed_to {
-            crate::rules::TraversedTo::Owned(ref val) => val,
-            crate::rules::TraversedTo::Referenced(val) => val,
-        },
+        QueryResult::UnResolved(ur) => ur.traversed_to.clone(),
         _ => unreachable!(),
     };
-    assert!(std::ptr::eq(&path_value, path_ref));
+    // assert!(std::ptr::eq(&path_value, &*path_ref));
+    assert_eq!(&path_value, &*path_ref);
     Ok(())
 }
 
@@ -139,7 +135,7 @@ fn non_empty_value_return_results() -> Result<()> {
         "#,
     )?)?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value),
         recorder: None,
     };
     let query = AccessQuery::try_from("Resources.*")?.query;
@@ -192,7 +188,7 @@ fn non_empty_value_mixed_results() -> Result<()> {
         "#,
     )?)?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value),
         recorder: None,
     };
     let query_results = eval.query(&query)?;
@@ -236,7 +232,7 @@ fn non_empty_value_with_missing_list_property() -> Result<()> {
         "#,
     )?)?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value),
         recorder: None,
     };
     let query = AccessQuery::try_from("Resources.*.Properties.Tags[*].Value")?.query;
@@ -285,7 +281,7 @@ fn non_empty_value_with_empty_list_property() -> Result<()> {
         "#,
     )?)?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value),
         recorder: None,
     };
     let query = AccessQuery::try_from("Resources.*.Properties.Tags[*].Value")?.query;
@@ -334,7 +330,7 @@ fn map_filter_keys() -> Result<()> {
         "#,
     )?)?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value),
         recorder: None,
     };
     let query = AccessQuery::try_from("Resources[ keys == /s3/ ]")?.query;
@@ -428,7 +424,7 @@ fn test_with_converter() -> Result<()> {
         "#,
     )?)?;
     let mut eval = BasicQueryTesting {
-        root: &path_value,
+        root: Rc::new(path_value),
         recorder: None,
     };
     let query = AccessQuery::try_from("resources.*.properties.tags[*].value")?.query;

@@ -4,6 +4,7 @@ use crate::rules::exprs::AccessQuery;
 use crate::rules::path_value::*;
 use crate::rules::EvalContext;
 use std::convert::TryFrom;
+use std::rc::Rc;
 
 #[test]
 fn test_count_function() -> crate::rules::Result<()> {
@@ -11,7 +12,7 @@ fn test_count_function() -> crate::rules::Result<()> {
     let value = PathAwareValue::try_from(serde_yaml::from_str::<serde_yaml::Value>(value_str)?)?;
 
     let mut eval = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let query = AccessQuery::try_from(r#"Resources"#)?;
@@ -23,7 +24,7 @@ fn test_count_function() -> crate::rules::Result<()> {
     let value = PathAwareValue::try_from(serde_yaml::from_str::<serde_yaml::Value>(value_str)?)?;
 
     let mut eval = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let query = AccessQuery::try_from(r#"Resources"#)?;
@@ -40,7 +41,7 @@ fn test_count_function() -> crate::rules::Result<()> {
     "#;
     let value = PathAwareValue::try_from(serde_yaml::from_str::<serde_yaml::Value>(value_str)?)?;
     let mut eval = BasicQueryTesting {
-        root: &value,
+        root: Rc::new(value),
         recorder: None,
     };
     let query = AccessQuery::try_from(r#"Resources[ Type == 'AWS::S3::Bucket' ]"#)?;
