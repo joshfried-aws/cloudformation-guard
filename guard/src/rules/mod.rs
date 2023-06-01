@@ -216,8 +216,6 @@ pub(crate) struct UnaryValueCheck {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct MissingValueCheck<'value> {
-    //TODO: Should we just use an owned value instead of a reference here??? Names of rules
-    //shouldnt be too expensive to clone....
     pub(crate) rule: &'value str,
     pub(crate) message: Option<String>,
     pub(crate) custom_message: Option<String>,

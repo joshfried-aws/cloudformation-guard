@@ -97,7 +97,6 @@ fn no_query_return_root() -> Result<()> {
         _ => unreachable!(),
     };
     assert_eq!(&path_value, &*path_ref);
-    // assert!(std::ptr::eq(&path_value, &*path_ref));
     Ok(())
 }
 
@@ -116,7 +115,6 @@ fn empty_value_return_unresolved() -> Result<()> {
         QueryResult::UnResolved(ur) => ur.traversed_to.clone(),
         _ => unreachable!(),
     };
-    // assert!(std::ptr::eq(&path_value, &*path_ref));
     assert_eq!(&path_value, &*path_ref);
     Ok(())
 }

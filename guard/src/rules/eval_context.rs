@@ -1290,7 +1290,6 @@ fn try_handle_function_call(
             num => {
                 // TODO: Verify the validation for this function call
                 if !matches!(args[0], QueryResult::Resolved(_)) {
-                    // NOTE: not sure if this is necessary
                     return Err(Error::ParseError(String::from(
                         "regex_replace function requires the first argument to be variable, but received a literal"
                     )));

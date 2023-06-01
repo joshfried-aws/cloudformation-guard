@@ -383,8 +383,6 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
                 assert!(l.diff.is_empty());
                 assert_eq!(&*l.rhs, &scalar_query_list_value);
                 assert_eq!(&*l.lhs, &list_literal_value);
-                // assert!(std::ptr::eq(&*l.rhs, &scalar_query_list_value));
-                // assert!(std::ptr::eq(&*l.lhs, &list_literal_value));
             }
 
             ValueEvalResult::ComparisonResult(ComparisonResult::NotComparable(nc)) => {
@@ -393,8 +391,6 @@ fn test_operator_in_list_literal_to_query_ok() -> crate::rules::Result<()> {
                 // while it may not be the most efficient, it shouldnt be dangerous / buggy?
                 assert_eq!(*nc.pair.lhs, list_literal_value);
                 assert_eq!(&*nc.pair.rhs, &scalar_query_value);
-                // assert!(std::ptr::eq(&*nc.pair.lhs, &list_literal_value));
-                // assert!(std::ptr::eq(&*nc.pair.rhs, &scalar_query_value));
             }
 
             rest => {
@@ -437,11 +433,9 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
         match each {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::Value(pair))) => {
                 assert_eq!(&*pair.rhs, &scalar_literal_value);
-                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
                 assert!(matches!(&*pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     if p.0.is_empty() {
-                        // assert!(std::ptr::eq(&*pair.lhs, &scalar_query_value));
                         assert_eq!(&*pair.lhs, &scalar_query_value);
                     } else {
                         assert_eq!(&p.0, "/1");
@@ -455,7 +449,6 @@ fn test_operator_in_query_to_scalar_ok() -> crate::rules::Result<()> {
             //
             ValueEvalResult::ComparisonResult(ComparisonResult::Fail(Compare::Value(pair))) => {
                 assert_eq!(&*pair.rhs, &scalar_literal_value);
-                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
                 assert!(matches!(&*pair.lhs, PathAwareValue::String(_)));
                 if let PathAwareValue::String((p, v)) = &*pair.lhs {
                     assert_eq!(&p.0, "/0");
@@ -537,8 +530,6 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
                 // RHS value pointer is the same
                 //
                 assert_eq!(&*pair.rhs, &scalar_literal_value);
-                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
-
                 //
                 // Expect all String values from the flattened list
                 //
@@ -547,7 +538,6 @@ fn test_operator_in_query_to_scalar_in_string_ok() -> crate::rules::Result<()> {
                     match p.0.as_str() {
                         "" => {
                             assert_eq!(&*pair.lhs, &scalar_query_value);
-                            // assert!(std::ptr::eq(&*pair.lhs, &scalar_query_value));
                         }
 
                         "/0" => {
@@ -630,8 +620,6 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 // RHS value pointer is the same
                 //
                 assert_eq!(&*pair.rhs, &scalar_literal_value);
-                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
-
                 //
                 // Expect all String values from the flattened list
                 //
@@ -640,7 +628,6 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                     match p.0.as_str() {
                         "" => {
                             assert_eq!(&*pair.lhs, &scalar_query_value);
-                            // assert!(std::ptr::eq(&*pair.lhs, &scalar_query_value));
                         }
 
                         "/0" => {
@@ -666,8 +653,6 @@ fn test_operator_in_query_to_scalar_in_string_not_ok() -> crate::rules::Result<(
                 // RHS value pointer is the same
                 //
                 assert_eq!(&*pair.rhs, &scalar_literal_value);
-                // assert!(std::ptr::eq(&*pair.rhs, &scalar_literal_value));
-
                 //
                 // Expect all String values from the flattened list
                 //
@@ -749,19 +734,15 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
                 for each in lin.lhs {
                     if each.is_scalar() {
                         assert_eq!(&*each, &lhs_scalar_value);
-                        // assert!(std::ptr::eq(&*each, &lhs_scalar_value));
                     } else {
                         assert_eq!(&*each, &lhs_list_value);
-                        // assert!(std::ptr::eq(&*each, &lhs_list_value));
                     }
                 }
 
                 for each in lin.rhs {
                     if each.is_scalar() {
-                        // assert!(std::ptr::eq(&*each, &rhs_scalar_query_value));
                         assert_eq!(&*each, &rhs_scalar_query_value);
                     } else {
-                        // assert!(std::ptr::eq(&*each, &rhs_scalar_query_list_value));
                         assert_eq!(&*each, &rhs_scalar_query_list_value);
                     }
                 }
@@ -799,16 +780,13 @@ fn test_operator_in_query_to_query_ok() -> crate::rules::Result<()> {
                 assert!(qin.diff.is_empty());
                 for each in qin.lhs {
                     if each.is_scalar() {
-                        // assert!(std::ptr::eq(&*each, &lhs_scalar_value));
                         assert_eq!(&*each, &lhs_scalar_value);
                     } else {
                         assert_eq!(&*each, &lhs_list_value);
-                        // assert!(std::ptr::eq(&*each, &lhs_list_value));
                     }
                 }
                 for each in qin.rhs {
                     assert_eq!(&*each, &rhs_scalar_query_list_value);
-                    // assert!(std::ptr::eq(&*each, &rhs_scalar_query_list_value));
                 }
             }
 
@@ -893,15 +871,11 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
             ValueEvalResult::ComparisonResult(ComparisonResult::Success(Compare::QueryIn(qin))) => {
                 assert!(qin.diff.is_empty());
                 assert_eq!(qin.rhs.len(), 2);
-                // assert!(std::ptr::eq(&*qin.rhs[0], &rhs_scalar_query_value));
                 assert_eq!(&*qin.rhs[0], &rhs_scalar_query_value);
                 assert_eq!(&*qin.rhs[1], &rhs_scalar_query_list_value);
-                // assert!(std::ptr::eq(&*qin.rhs[1], &rhs_scalar_query_list_value));
                 assert_eq!(qin.lhs.len(), 2);
                 assert_eq!(&*qin.lhs[0], &lhs_scalar_value);
-                // assert!(std::ptr::eq(&*qin.lhs[0], &lhs_scalar_value));
                 assert_eq!(&*qin.lhs[1], &lhs_list_value);
-                // assert!(std::ptr::eq(&*qin.lhs[1], &lhs_list_value));
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
@@ -936,9 +910,7 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
                 assert!(!qin.diff.is_empty());
                 assert_eq!(qin.diff.len(), 1);
                 assert_eq!(&*qin.diff[0], &lhs_scalar_value);
-                // assert!(std::ptr::eq(&*qin.diff[0], &lhs_scalar_value));
                 assert_eq!(qin.rhs.len(), 1);
-                // assert!(std::ptr::eq(&*qin.rhs[0], &rhs_scalar_query_list_value));
                 assert_eq!(&*qin.rhs[0], &rhs_scalar_query_list_value);
             }
 
@@ -970,10 +942,8 @@ fn test_operator_in_query_to_query_not_ok() -> crate::rules::Result<()> {
                 assert!(!qin.diff.is_empty());
                 assert_eq!(qin.diff.len(), 1);
                 assert_eq!(&*qin.diff[0], &lhs_list_value);
-                // assert!(std::ptr::eq(&*qin.diff[0], &lhs_list_value));
                 assert_eq!(qin.rhs.len(), 1);
                 assert_eq!(&*qin.rhs[0], &rhs_scalar_query_list_value);
-                // assert!(std::ptr::eq(&*qin.rhs[0], &rhs_scalar_query_list_value));
             }
 
             ValueEvalResult::LhsUnresolved(lhsur) => {
