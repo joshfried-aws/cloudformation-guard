@@ -374,7 +374,6 @@ impl Comparator for InOperation {
                     rhs.into_iter()
                         .for_each(|r| results.push(contained_in(Rc::clone(l), r)));
                 } else if let PathAwareValue::List((_, list)) = &**l {
-                    // TODO: will this work? how are Rc<T> checked for equivalency
                     let diff = list
                         .iter()
                         .cloned()

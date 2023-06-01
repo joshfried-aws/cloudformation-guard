@@ -585,67 +585,6 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                                             ));
                                     }
                                 }
-                                QueryResult::Resolved(key) => {
-                                    if let PathAwareValue::String((_, k)) = &*key {
-                                        if let Some(next) = map.values.get(k) {
-                                            acc.extend(query_retrieval_with_converter(
-                                                query_index + 1,
-                                                query,
-                                                Rc::new(next.clone()),
-                                                resolver,
-                                                converter,
-                                            )?);
-                                        } else {
-                                            acc.extend(
-                                                    to_unresolved_result(
-                                                        Rc::clone(&current),
-                                                        format!("Could not locate key = {} inside struct at path = {}", k, path),
-                                                        &query[query_index..]
-                                                    )?
-                                                );
-                                        }
-                                    } else if let PathAwareValue::List((_, inner)) = &*key {
-                                        for each_key in inner {
-                                            match each_key {
-                                                    PathAwareValue::String((path, key_to_match)) => {
-                                                        if let Some(next) = map.values.get(key_to_match) {
-                                                            acc.extend(query_retrieval_with_converter(query_index + 1, query, Rc::new(next.clone()), resolver, converter)?);
-                                                        } else {
-                                                            acc.extend(
-                                                                to_unresolved_result(
-                                                                    Rc::clone(&current),
-                                                                    format!("Could not locate key = {} inside struct at path = {}", key_to_match, path),
-                                                                    &query[query_index..]
-                                                                )?
-                                                            );
-                                                        }
-                                                    },
-
-                                                    _rest => {
-                                                        return Err(Error
-                                                            ::NotComparable(
-                                                                format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
-                                                                        SliceDisplay(query),
-                                                                        key.type_info(),
-                                                                        key.self_value()
-                                                                )
-
-                                                        ))
-                                                    }
-                                                }
-                                        }
-                                    } else {
-                                        return Err(Error
-                                               ::NotComparable(
-                                                    format!("Variable projections inside Query {}, is returning a non-string value for key {}, {:?}",
-                                                            SliceDisplay(query),
-                                                            key.type_info(),
-                                                            key.self_value()
-                                                    )
-
-                                            ));
-                                    }
-                                }
                             }
                         }
                         Ok(acc)
@@ -996,7 +935,6 @@ fn query_retrieval_with_converter<'value, 'loc: 'value>(
                         (QueryResult::Resolved(key), Status::PASS) => {
                             if let PathAwareValue::String((_, key_name)) = &*key {
                                 selected.push(QueryResult::Resolved(Rc::new(
-                                    // TODO: chang the map to Rc<PathAwareValue>
                                     map.values.get(key_name.as_str()).unwrap().clone(),
                                 )));
                             }

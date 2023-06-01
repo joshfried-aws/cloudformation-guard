@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 mod operators;
 
-// TODO: why is this a result...seems like it should just return a bool
 fn exists_operation(value: &QueryResult) -> Result<bool> {
     Ok(match value {
         QueryResult::Resolved(_) | QueryResult::Literal(_) => true,
