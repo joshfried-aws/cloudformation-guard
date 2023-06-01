@@ -4,8 +4,8 @@ Resources:
     Properties:
       Policy: |
         {
-           “Principal”: “*”,
-           “Actions”: [“s3*“, “ec2*“]
+           "Principal": "*",
+           "Actions": ["s3*", "ec2*"]
         }
       Arn: arn:aws:newservice:us-west-2:123456789012:Table/extracted
   s3:
