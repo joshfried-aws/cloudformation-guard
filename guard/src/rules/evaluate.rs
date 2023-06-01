@@ -1061,7 +1061,7 @@ fn extract_variables<'s, 'loc>(
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
+#[deprecated]
 pub(crate) struct RootScope<'s, 'loc> {
     rules: &'s RulesFile<'loc>,
     input_context: &'s PathAwareValue,

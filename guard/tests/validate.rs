@@ -796,4 +796,19 @@ mod validate_tests {
 
         assert_eq!(StatusCode::INTERNAL_FAILURE, status_code);
     }
+
+    #[test]
+    fn test_validate_with_fn_expr() {
+        let mut reader = Reader::new(Stdin(std::io::stdin()));
+        let mut writer = Writer::new(WBVec(vec![]), WBVec(vec![]));
+
+        let status_code = ValidateTestRunner::default()
+            .rules(vec!["/functions/rules/regex_replace.guard"])
+            .data(vec!["/functions/data/template.yaml"])
+            .verbose()
+            .show_summary(vec!["all"])
+            .run(&mut writer, &mut reader);
+
+        assert_eq!(StatusCode::SUCCESS, status_code);
+    }
 }

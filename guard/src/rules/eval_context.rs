@@ -1352,8 +1352,7 @@ fn try_handle_function_call(
             num => {
                 // TODO: Verify the validation for this function call
                 if !matches!(args[0], QueryResult::Resolved(_)) {
-                    // NOTE: not sure if this is
-                    // necessary
+                    // NOTE: not sure if this is necessary
                     return Err(Error::ParseError(String::from(
                         "regex_replace function requires the first argument to be variable, but received a literal"
                     )));
@@ -1542,6 +1541,43 @@ impl<'value, 'loc: 'value, 'eval> EvalContext<'value, 'loc> for BlockScope<'valu
 
         if let Some(values) = self.scope.resolved_variables.get(variable_name) {
             return Ok(values.clone());
+        }
+
+        if let Some(FunctionExpr {
+            parameters, name, ..
+        }) = self.scope.function_expressions.get(variable_name)
+        {
+            let args = parameters.iter().try_fold(
+                vec![],
+                |mut args, param| -> Result<Vec<QueryResult>> {
+                    match param {
+                        LetValue::Value(value) => {
+                            args.push(QueryResult::Literal(Rc::new(value.clone())))
+                        }
+                        LetValue::AccessClause(clause) => {
+                            let resolved_query = self.query(&clause.query)?;
+                            args.extend(resolved_query);
+                        }
+                        // TODO: do we want to allow for function expressions to be params?
+                        _ => todo!(),
+                    }
+
+                    Ok(args)
+                },
+            )?;
+
+            let result = try_handle_function_call(name, &args)?
+                .into_iter()
+                .flatten()
+                .map(Rc::new)
+                .map(QueryResult::Resolved)
+                .collect::<Vec<_>>();
+
+            self.scope
+                .resolved_variables
+                .insert(variable_name, result.clone());
+
+            return Ok(result);
         }
 
         let query = match self.scope.variable_queries.get(variable_name) {
