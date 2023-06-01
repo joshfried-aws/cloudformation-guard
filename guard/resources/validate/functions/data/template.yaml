@@ -8,5 +8,6 @@ Resources:
            "Actions": ["s3*", "ec2*"]
         }
       Arn: arn:aws:newservice:us-west-2:123456789012:Table/extracted
+      Encoded: This%20string%20will%20be%20URL%20encoded
   s3:
     Type: AWS::S3::Bucket

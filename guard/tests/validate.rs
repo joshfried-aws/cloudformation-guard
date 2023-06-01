@@ -801,6 +801,10 @@ mod validate_tests {
     #[case("regex_replace.guard")]
     #[case("substring.guard")]
     #[case("json_parse.guard")]
+    #[case("string_manip.guard")]
+    #[case("url_decode.guard")]
+    #[case("join.guard")]
+    #[case("count.guard")]
     fn test_validate_with_fn_expr(#[case] rule: &str) {
         let mut reader = Reader::new(Stdin(std::io::stdin()));
         let mut writer = Writer::new(WBVec(vec![]), WBVec(vec![]));
@@ -811,10 +815,6 @@ mod validate_tests {
             .verbose()
             .show_summary(vec!["all"])
             .run(&mut writer, &mut reader);
-
-        let out = writer.into_string().unwrap();
-
-        println!("{out}");
 
         assert_eq!(StatusCode::SUCCESS, status_code);
     }

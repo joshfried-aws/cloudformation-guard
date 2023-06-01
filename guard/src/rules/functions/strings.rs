@@ -162,12 +162,17 @@ pub(crate) fn to_lower(args: &[QueryResult]) -> crate::rules::Result<Vec<Option<
 
 pub(crate) fn join(args: &[QueryResult], delimiter: &str) -> crate::rules::Result<PathAwareValue> {
     let mut aggr = String::with_capacity(512);
-    for entry in args.iter() {
+    let total = args.len();
+
+    for (index, entry) in args.iter().enumerate() {
         match entry {
             QueryResult::Resolved(v) | QueryResult::Literal(v) => {
                 if let PathAwareValue::String((_, val)) = &**v {
-                    aggr.push_str(delimiter);
                     aggr.push_str(val);
+
+                    if total - 1 > index {
+                        aggr.push_str(delimiter);
+                    }
                 } else {
                     return Err(Error::IncompatibleError(format!(
                         "Joining non string values {}",
