@@ -96,19 +96,6 @@ pub(crate) struct NotComparable {
     pub(crate) pair: LhsRhsPair,
 }
 
-// pub(super) fn resolved<'value, E, R>(
-//     qr: &QueryResult<'value>,
-//     err: E,
-// ) -> Result<Rc<PathAwareValue>, R>
-// where
-//     E: Fn(UnResolved<'value>) -> R,
-// {
-//     match qr {
-//         QueryResult::Resolved(r) | QueryResult::Literal(r) => Ok(*r),
-//         QueryResult::UnResolved(ur) => Err(err(ur.clone())),
-//     }
-// }
-
 pub(crate) trait Comparator {
     fn compare<'value>(
         &self,

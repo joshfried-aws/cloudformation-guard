@@ -805,7 +805,7 @@ mod validate_tests {
     #[case("url_decode.guard")]
     #[case("join.guard")]
     #[case("count.guard")]
-    fn test_validate_with_fn_expr(#[case] rule: &str) {
+    fn test_validate_with_fn_expr_success(#[case] rule: &str) {
         let mut reader = Reader::new(Stdin(std::io::stdin()));
         let mut writer = Writer::new(WBVec(vec![]), WBVec(vec![]));
 
