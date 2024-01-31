@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::io::Write;
 
+use crate::commands::reporters::validate::common::find_all_failing_clauses;
 use crate::commands::tracker::StatusContext;
-use crate::commands::validate::common::find_all_failing_clauses;
 use crate::commands::validate::{OutputFormatType, Reporter};
 use crate::rules::{EvaluationType, Status};
 

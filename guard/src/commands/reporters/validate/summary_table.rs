@@ -1,5 +1,5 @@
+use crate::commands::reporters::validate::common::colored_string;
 use crate::commands::tracker::StatusContext;
-use crate::commands::validate::common::colored_string;
 use crate::commands::validate::{OutputFormatType, Reporter};
 use crate::rules::eval_context::EventRecord;
 use crate::rules::parser::get_rule_name;
@@ -15,14 +15,14 @@ use std::io::Write;
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, Eq, PartialOrd, PartialEq)]
 #[allow(clippy::upper_case_acronyms)]
-pub(super) enum SummaryType {
+pub enum SummaryType {
     PASS = 0b0001,
     FAIL = 0b0010,
     SKIP = 0b0100,
 }
 
 #[derive(Debug)]
-pub(super) struct SummaryTable<'reporter> {
+pub struct SummaryTable<'reporter> {
     summary_type: BitFlags<SummaryType>,
     next: &'reporter dyn Reporter,
 }
